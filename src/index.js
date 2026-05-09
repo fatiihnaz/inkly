@@ -21,6 +21,7 @@ export { EditableRegion } from "./components/EditableRegion.jsx";
 export { useCmsContent } from "./hooks/use-cms-content.js";
 export { useCmsAdmin } from "./hooks/use-cms-admin.js";
 export { useCmsBlock } from "./hooks/use-cms-block.js";
+export { useCountdown } from "./hooks/use-countdown.js";
 
 export { createCmsConfig } from "./lib/config.js";
 export { CmsApiError } from "./lib/api-client.js";

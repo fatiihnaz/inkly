@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
+import { ChevronsLeft, ChevronDown, Check, Undo2, LogOut } from "lucide-react";
 
 import { useCmsContext } from "../lib/context.js";
 import { useCmsAdmin } from "../hooks/use-cms-admin.js";
@@ -36,6 +37,7 @@ import { TextEditor } from "./editors/TextEditor.jsx";
 import { RichTextEditor } from "./editors/RichTextEditor.jsx";
 import { ImageEditor } from "./editors/ImageEditor.jsx";
 import { LinkEditor } from "./editors/LinkEditor.jsx";
+import { DateEditor } from "./editors/DateEditor.jsx";
 
 import {
   PANEL_WIDTH,
@@ -228,7 +230,7 @@ export function AdminDrawer() {
               transition={{ duration: 0.25, ease: PANEL_TRANSITION.ease }}
               style={handleIconStyle}
             >
-              <ChevronsLeftIcon />
+              <ChevronsLeft size={14} />
             </motion.span>
           </span>
         </button>
@@ -315,7 +317,7 @@ function BlockList({ blockList, drafts, setDraft, clearDraft, activeBlockPath, o
           manifest sync'ini çalıştır.
         </div>
       ) : (
-        <ul style={listStyle}>
+        <ul style={listStyle} data-cms-list>
           {blockList.map((block, i) => (
             <motion.li
               key={block.blockPath}
@@ -402,15 +404,6 @@ function BlockCard({ block, draft, hasDraft, isActive, onChange, onReset, onFocu
           {block.blockPath}
         </span>
         
-        <motion.span
-          initial={false}
-          animate={{ rotate: isOpen ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
-          style={{ display: "inline-flex", color: TEXT_MUTED }}
-        >
-          <ChevronDownIcon />
-        </motion.span>
-
         {isDirty ? (
           <button type="button"
             onClick={(e) => { e.stopPropagation(); onReset(); }}
@@ -419,9 +412,18 @@ function BlockCard({ block, draft, hasDraft, isActive, onChange, onReset, onFocu
             aria-label="Bu bloğun değişikliklerini geri al"
             title="Geri al"
           >
-            <UndoIcon />
+            <Undo2 size={13} />
           </button>
         ) : null}
+
+        <motion.span
+          initial={false}
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ display: "inline-flex", color: TEXT_MUTED }}
+        >
+          <ChevronDown size={14} />
+        </motion.span>
         <TypeChip type={block.blockType} />
       </div>
       
@@ -478,7 +480,7 @@ function SaveBar({ dirtyCount, isSaving, onDiscard, onSave }) {
           title="Tüm değişiklikleri iptal et"
           disabled={isSaving}
         >
-          <UndoIcon />
+          <Undo2 size={14} />
         </button>
         <button type="button"
           onClick={onSave}
@@ -488,7 +490,7 @@ function SaveBar({ dirtyCount, isSaving, onDiscard, onSave }) {
           title="Tümünü kaydet"
           disabled={isSaving || dirtyCount === 0}
         >
-          <CheckIcon />
+          <Check size={14} />
           <span>Kaydet</span>
         </button>
       </div>
@@ -542,7 +544,7 @@ function PanelFooter({ userInfo, onSignOut }) {
         aria-label="Çıkış yap"
         title="Çıkış yap"
       >
-        <LogOutIcon />
+        <LogOut size={14} />
       </button>
     </footer>
   );
@@ -601,6 +603,8 @@ function renderEditor(block, value, onChange) {
       return <ImageEditor value={value} onChange={onChange} />;
     case "Link":
       return <LinkEditor value={value} onChange={onChange} />;
+    case "Date":
+      return <DateEditor value={value} onChange={onChange} />;
     case "Group":
     case "DataSource":
     default:
@@ -612,50 +616,3 @@ function renderEditor(block, value, onChange) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Inline icons
-// ---------------------------------------------------------------------------
-
-function ChevronsLeftIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m11 17-5-5 5-5" />
-      <path d="m18 17-5-5 5-5" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  );
-}
-
-function UndoIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-      <path d="M3 3v5h5" />
-    </svg>
-  );
-}
-
-function LogOutIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}

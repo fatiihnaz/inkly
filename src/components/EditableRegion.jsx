@@ -38,9 +38,20 @@ import { useCmsContext } from "../lib/context.js";
  * @property {string} [as]   Wrapper tag for Text / RichText (default: "span" / "div"). Ignored for Image and Link when the block has a value.
  */
 
-const ACTIVE_OUTLINE = "2px solid #3b82f6";
-const HOVER_OUTLINE = "2px dashed #93c5fd";
+const RING_HOVER   = "0 0 0 1.5px rgba(201,184,150,0.30)";
+const RING_ACTIVE  = "0 0 0 2px rgba(201,184,150,0.80)";
+const BG_OFF    = "rgba(201,184,150,0)";
+const BG_HOVER  = "rgba(201,184,150,0.05)";
+const BG_ACTIVE = "rgba(201,184,150,0.08)";
 const EMPTY_PLACEHOLDER = "-";
+
+const BLOCK_TAGS = new Set([
+  "div", "section", "article", "main", "aside", "header", "footer", "nav",
+  "h1", "h2", "h3", "h4", "h5", "h6", "p",
+  "ul", "ol", "li", "dl", "dt", "dd",
+  "figure", "figcaption", "blockquote", "pre",
+  "form", "fieldset", "table", "thead", "tbody", "tr", "td", "th",
+]);
 
 /**
  * @param {EditableRegionProps & Record<string, *>} props
@@ -66,26 +77,77 @@ export function EditableRegion({ blockPath, as, ...rest }) {
 
   if (!isAdmin) return rendered;
 
-  // Admin mode: layer click / hover / outline on top of whatever the
-  // renderer produced (placeholder or real content). Cloning keeps the
-  // DOM shape identical to public mode.
   const isActive = activeBlock === blockPath;
   /** @param {React.MouseEvent} e */
   const handleClick = (e) => {
     e.stopPropagation();
     setActiveBlock(blockPath);
   };
-  const outline = isActive ? ACTIVE_OUTLINE : isHovered ? HOVER_OUTLINE : undefined;
-  const adminProps = {
+
+  const childProps = rendered.props ?? {};
+  const mergedOnClick = childProps.onClick
+    ? /** @param {React.MouseEvent} e */ (e) => {
+        childProps.onClick(e);
+        if (!e.defaultPrevented) handleClick(e);
+      }
+    : handleClick;
+
+  const cloned = cloneElement(rendered, {
     "data-block": blockPath,
     "data-cms-active": isActive || undefined,
-    onClick: handleClick,
-    onMouseEnter: () => setIsHovered(true),
-    onMouseLeave: () => setIsHovered(false),
-  };
-  const adminStyle = { outline, outlineOffset: 2, cursor: "pointer" };
+    onClick: mergedOnClick,
+    style: {
+      ...(childProps.style ?? {}),
+      boxShadow: isActive ? RING_ACTIVE : isHovered ? RING_HOVER : undefined,
+      transition: "box-shadow 0.15s ease",
+      cursor: "pointer",
+    },
+  });
 
-  return wrapForAdmin(rendered, adminProps, adminStyle, handleClick);
+  const innerTag = typeof rendered.type === "string" ? rendered.type : "span";
+  const wrapperDisplay = BLOCK_TAGS.has(innerTag) ? "block" : "inline-block";
+
+  return (
+    <span
+      style={{
+        position: "relative",
+        display: wrapperDisplay,
+        backgroundColor: isActive ? BG_ACTIVE : isHovered ? BG_HOVER : BG_OFF,
+        transition: "background-color 0.2s ease",
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {cloned}
+      {(isHovered || isActive) && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            transform: "translateY(-100%)",
+            background: "rgba(14,11,8,0.90)",
+            border: "1px solid rgba(201,184,150,0.18)",
+            borderBottom: "none",
+            borderRadius: "4px 4px 0 0",
+            padding: "1px 6px",
+            fontSize: 9,
+            fontWeight: 500,
+            color: "rgba(201,184,150,0.65)",
+            letterSpacing: "0.05em",
+            lineHeight: "16px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            fontFamily: "ui-monospace, 'SF Mono', monospace",
+            zIndex: 9999,
+          }}
+        >
+          {blockPath}{blockType ? ` · ${blockType}` : ""}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -103,6 +165,8 @@ function isValueEmpty(blockType, value) {
       return !value.src;
     case "Link":
       return !value.href;
+    case "Date":
+      return value === "";
     default:
       return false;
   }
@@ -160,28 +224,3 @@ function renderPlaceholder(as, rest) {
   return <Tag {...rest}>{EMPTY_PLACEHOLDER}</Tag>;
 }
 
-/**
- * Splice admin props (click, hover, outline) onto whatever the renderer
- * produced. Cloning a single React element keeps the DOM shape identical
- * to public mode.
- *
- * @param {React.ReactElement} node
- * @param {Record<string, *>} adminProps
- * @param {React.CSSProperties} adminStyle
- * @param {(e: React.MouseEvent) => void} handleClick
- */
-function wrapForAdmin(node, adminProps, adminStyle, handleClick) {
-  /** @type {Record<string, *>} */
-  const childProps = node.props ?? {};
-  const mergedOnClick = childProps.onClick
-    ? /** @param {React.MouseEvent} e */ (e) => {
-        childProps.onClick(e);
-        if (!e.defaultPrevented) handleClick(e);
-      }
-    : handleClick;
-  return cloneElement(node, {
-    ...adminProps,
-    onClick: mergedOnClick,
-    style: { ...(childProps.style ?? {}), ...adminStyle },
-  });
-}

@@ -194,6 +194,7 @@ export const listStyle = {
   padding: "4px 14px 14px",
   listStyle: "none",
   overflowY: "auto",
+  scrollbarWidth: "none",
   display: "flex",
   flexDirection: "column",
   gap: 8,
@@ -503,6 +504,7 @@ export const TYPE_STYLES = {
   RichText:   { color: "rgb(210, 195, 230)", bg: "rgba(150, 130, 200, 0.10)", ring: "rgba(150, 130, 200, 0.22)", label: "Rich" },
   Image:      { color: "rgb(170, 215, 180)", bg: "rgba(110, 180, 130, 0.10)", ring: "rgba(110, 180, 130, 0.22)", label: "Image" },
   Link:       { color: "rgb(225, 200, 160)", bg: "rgba(200, 160, 100, 0.10)", ring: "rgba(200, 160, 100, 0.22)", label: "Link" },
+  Date:       { color: "rgb(180, 220, 210)", bg: "rgba(100, 180, 160, 0.10)", ring: "rgba(100, 180, 160, 0.22)", label: "Date" },
   Group:      { color: "rgb(210, 215, 220)", bg: "rgba(255, 255, 255, 0.05)", ring: "rgba(255, 255, 255, 0.10)", label: "Group" },
   DataSource: { color: "rgb(230, 190, 210)", bg: "rgba(220, 140, 180, 0.10)", ring: "rgba(220, 140, 180, 0.22)", label: "Data" },
 };
@@ -598,8 +600,5 @@ export const panelCss = `
   input.skylab-cms-field::placeholder, textarea.skylab-cms-field::placeholder {
     color: rgba(255,255,255,0.18);
   }
-  .skylab-cms-scrollarea::-webkit-scrollbar { width: 4px; }
-  .skylab-cms-scrollarea::-webkit-scrollbar-thumb {
-    background: ${BORDER}; border-radius: 99px;
-  }
+  ul[data-cms-list]::-webkit-scrollbar { display: none; }
 `;

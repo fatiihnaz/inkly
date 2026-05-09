@@ -8,7 +8,14 @@
 /**
  * Allowed values for `BlockResponse.blockType`.
  *
- * @typedef {"Text" | "RichText" | "Image" | "Link" | "Group" | "DataSource"} BlockType
+ * Value shapes per type:
+ *   - Text / RichText : string
+ *   - Image           : { src: string, alt: string }
+ *   - Link            : { href: string, label: string }
+ *   - Date            : ISO 8601 string, e.g. "2026-08-15T18:00:00.000Z". Empty string when unset.
+ *   - Group / DataSource: consumed by code; no inline rendering.
+ *
+ * @typedef {"Text" | "RichText" | "Image" | "Link" | "Date" | "Group" | "DataSource"} BlockType
  */
 
 /**

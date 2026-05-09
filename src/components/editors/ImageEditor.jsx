@@ -200,7 +200,7 @@ export function ImageEditor({ value, onChange }) {
                 >
                   {/* Progress bar */}
                   <div style={{
-                    width: "75%",
+                    width: "80%",
                     height: 3,
                     background: "rgba(255,255,255,0.08)",
                     borderRadius: 99,
@@ -208,17 +208,26 @@ export function ImageEditor({ value, onChange }) {
                   }}>
                     <motion.div
                       animate={{ width: `${progress}%` }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
                       style={{
                         height: "100%",
-                        background: `linear-gradient(90deg, rgba(201,184,150,0.6), ${ACCENT})`,
+                        background: `linear-gradient(90deg, rgba(201,184,150,0.5), ${ACCENT})`,
                         borderRadius: 99,
                       }}
                     />
                   </div>
-                  <span style={{ fontSize: 11, color: ACCENT, fontWeight: 500, letterSpacing: "0.01em" }}>
-                    {progress < 100 ? `%${progress} yükleniyor…` : "İşleniyor…"}
-                  </span>
+
+                  {/* Status + percentage */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: TEXT_MUTED, fontWeight: 400 }}>
+                      {progress < 100 ? "Yükleniyor" : "İşleniyor…"}
+                    </span>
+                    {progress < 100 && (
+                      <span style={{ fontSize: 11, color: ACCENT, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                        {progress}%
+                      </span>
+                    )}
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
