@@ -47,6 +47,10 @@
  * @property {number} sortOrder
  * @property {number} version    Used for optimistic concurrency.
  * @property {*|null} data       Resolved DataSource payload, else null.
+ * @property {string} [_slug]
+ *   Client-side hint stamped by the SDK after fetch so the save layer
+ *   knows which slug to PUT each block back to. Not part of the wire
+ *   payload - the backend doesn't return or expect it.
  */
 
 /**

@@ -161,6 +161,97 @@ export const statusDotStyle = {
 };
 
 // ---------------------------------------------------------------------------
+// Tab bar
+// ---------------------------------------------------------------------------
+
+export const tabBarStyle = {
+  display: "flex",
+  gap: 4,
+  padding: "0 14px",
+  borderBottom: `1px solid ${BORDER_SOFT}`,
+};
+
+export const tabButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "10px 4px",
+  marginBottom: -1,
+  background: "transparent",
+  border: 0,
+  borderBottom: "2px solid transparent",
+  color: TEXT_MUTED,
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+  letterSpacing: "0.01em",
+  transition: "color 0.15s ease, border-color 0.15s ease",
+  fontFamily: "inherit",
+};
+
+export const tabButtonActiveStyle = {
+  color: TEXT_PRIMARY,
+  borderBottom: `2px solid ${ACCENT}`,
+};
+
+export const tabCountBadgeStyle = {
+  fontSize: 10,
+  padding: "1px 6px",
+  borderRadius: 99,
+  background: SURFACE_2,
+  color: TEXT_FAINT,
+  fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+  fontWeight: 500,
+};
+
+// ---------------------------------------------------------------------------
+// Group card (block list grouping by blockPath prefix)
+// ---------------------------------------------------------------------------
+
+export const groupCardStyle = {
+  border: `1px solid ${BORDER_SOFT}`,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.015)",
+  overflow: "hidden",
+};
+
+export const groupHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 12px",
+  cursor: "pointer",
+  userSelect: "none",
+  background: "rgba(255,255,255,0.02)",
+};
+
+export const groupNameStyle = {
+  flex: 1,
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: TEXT_PRIMARY,
+  letterSpacing: "0.01em",
+  textTransform: "capitalize",
+};
+
+export const groupCountStyle = {
+  fontSize: 10,
+  color: TEXT_FAINT,
+  fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+  background: SURFACE_2,
+  padding: "1px 6px",
+  borderRadius: 99,
+  fontWeight: 500,
+};
+
+export const groupBodyStyle = {
+  padding: "8px 10px 10px",
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+// ---------------------------------------------------------------------------
 // Block list / card
 // ---------------------------------------------------------------------------
 

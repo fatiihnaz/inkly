@@ -53,11 +53,35 @@ export function useCmsContent() {
       try {
         const token = await getAccessToken();
         const init = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
-        const response = await fetchContent(config, slug, init);
+
+        // Refetch the page slug + the global slug in parallel so a
+        // header/footer save reflects on every page after triggerRefetch
+        // bumps. Each block is stamped with its source slug so the save
+        // layer can PUT it back to the right place.
+        const globalSlug = config.globalSlug && config.globalSlug !== slug
+          ? config.globalSlug
+          : null;
+
+        const [pageResponse, globalResponse] = await Promise.all([
+          fetchContent(config, slug, init),
+          globalSlug
+            ? fetchContent(config, globalSlug, init).catch(() => ({ slug: globalSlug, blocks: [] }))
+            : Promise.resolve({ slug: "", blocks: [] }),
+        ]);
         if (cancelled) return;
-        const indexed = indexBlocksByPath(response.blocks);
+
+        const pageBlocks = pageResponse.blocks.map((b) => ({ ...b, _slug: slug }));
+        const pagePaths = new Set(pageBlocks.map((b) => b.blockPath));
+        const globalBlocks = globalSlug
+          ? globalResponse.blocks
+              .filter((b) => !pagePaths.has(b.blockPath))
+              .map((b) => ({ ...b, _slug: globalSlug }))
+          : [];
+
+        const merged = [...pageBlocks, ...globalBlocks];
+        const indexed = indexBlocksByPath(merged);
         setBlocks(() => indexed);
-        setState({ blocks: response.blocks, isLoading: false, error: null });
+        setState({ blocks: merged, isLoading: false, error: null });
       } catch (err) {
         if (cancelled) return;
         // eslint-disable-next-line no-console

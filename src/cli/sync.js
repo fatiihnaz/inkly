@@ -35,7 +35,10 @@ const appRoot = args.appRoot
   ? path.resolve(process.cwd(), args.appRoot)
   : path.resolve(process.cwd(), "app");
 
-const { manifests, warnings } = await discoverManifests({ appRoot });
+const { manifests, warnings } = await discoverManifests({
+  appRoot,
+  globalSlug: args.globalSlug,
+});
 
 for (const w of warnings) {
   const where = w.loc
@@ -71,12 +74,13 @@ try {
  * @param {string[]} argv
  */
 function parseArgs(argv) {
-  /** @type {{ appRoot?: string, env?: string, dryRun?: boolean, help?: boolean }} */
+  /** @type {{ appRoot?: string, env?: string, globalSlug?: string, dryRun?: boolean, help?: boolean }} */
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--app-root") out.appRoot = argv[++i];
     else if (a === "--env") out.env = argv[++i];
+    else if (a === "--global-slug") out.globalSlug = argv[++i];
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--help" || a === "-h") out.help = true;
     else {
@@ -97,6 +101,7 @@ Usage:
 Options:
   --app-root <path>    Directory to scan (default: ./app)
   --env <path>         dotenv file to preload before discovery (default: ./.env.local)
+  --global-slug <name> Slug for scope="global" blocks (default: __global)
   --dry-run            Print the discovered manifest as JSON without syncing
   --help, -h           Show this message
 

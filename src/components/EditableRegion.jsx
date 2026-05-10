@@ -24,9 +24,10 @@
  * client component instead - that hook still exposes the raw value.
  */
 
-import { cloneElement, useState } from "react";
+import { cloneElement, useContext, useState } from "react";
 
 import { useCmsContext } from "../lib/context.js";
+import { CmsGroupContext } from "../lib/group-context.js";
 
 /**
  * @import { BlockType } from "../lib/schemas.js"
@@ -47,6 +48,13 @@ import { useCmsContext } from "../lib/context.js";
  *   sync. Same caveat as `blockType` - omit and the region won't be synced.
  *   Must be a static literal in the JSX (the AST scanner can't evaluate
  *   expressions or imported values).
+ * @property {"global"} [scope]
+ *   Discovery-time marker. Set to `"global"` for region declared inside
+ *   shared UI (header, footer, site-wide settings). The discovery script
+ *   writes such regions to the `globalSlug` manifest entry instead of
+ *   any page slug, so the same block backs every page. Runtime ignores
+ *   this prop - the merged blocks map already contains both page and
+ *   global blocks under the same keys.
  */
 
 const RING_HOVER   = "0 0 0 1.5px rgba(201,184,150,0.30)";
@@ -67,21 +75,29 @@ const BLOCK_TAGS = new Set([
 /**
  * @param {EditableRegionProps & Record<string, *>} props
  */
-// `blockType` / `defaultValue` are discovery-only metadata read by the
-// AST scanner, not by the runtime. They're destructured under aliases so
-// (a) they don't leak into ...rest (which would dump them onto DOM nodes)
-// and (b) they don't shadow the local `blockType` const computed below.
+// `blockType` / `defaultValue` / `scope` are discovery-only metadata read
+// by the AST scanner, not by the runtime. They're destructured under
+// aliases so (a) they don't leak into ...rest (which would dump them onto
+// DOM nodes) and (b) they don't shadow the local `blockType` const
+// computed below.
 // eslint-disable-next-line no-unused-vars
-export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _dv, ...rest }) {
+export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _dv, scope: _scope, ...rest }) {
   const { isAdmin, blocks, drafts, activeBlock, setActiveBlock } = useCmsContext();
+  const groupPrefix = useContext(CmsGroupContext);
   const [isHovered, setIsHovered] = useState(false);
 
-  const block = blocks.get(blockPath);
+  // Auto-prefix the blockPath when wrapped in a `<CmsGroup>`. Discovery
+  // applies the same rule statically so the manifest entry's path is the
+  // already-prefixed string (e.g. "footer.copyright") - the runtime
+  // lookup must match. Top-level (no enclosing group) is a no-op.
+  const fullPath = groupPrefix ? `${groupPrefix}.${blockPath}` : blockPath;
+
+  const block = blocks.get(fullPath);
   const blockType = block ? block.blockType : null;
   // Live preview: prefer the unsaved draft when the admin is mid-edit.
   // `drafts.has` (not `??`) so an explicit empty/null draft still wins.
-  const value = drafts.has(blockPath)
-    ? drafts.get(blockPath)
+  const value = drafts.has(fullPath)
+    ? drafts.get(fullPath)
     : block
       ? block.value
       : undefined;
@@ -93,11 +109,11 @@ export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _d
 
   if (!isAdmin) return rendered;
 
-  const isActive = activeBlock === blockPath;
+  const isActive = activeBlock === fullPath;
   /** @param {React.MouseEvent} e */
   const handleClick = (e) => {
     e.stopPropagation();
-    setActiveBlock(blockPath);
+    setActiveBlock(fullPath);
   };
 
   const childProps = rendered.props ?? {};
@@ -109,7 +125,7 @@ export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _d
     : handleClick;
 
   const cloned = cloneElement(rendered, {
-    "data-block": blockPath,
+    "data-block": fullPath,
     "data-cms-active": isActive || undefined,
     onClick: mergedOnClick,
     style: {
@@ -163,7 +179,7 @@ export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _d
             zIndex: 9999,
           }}
         >
-          {blockPath}{blockType ? ` · ${blockType}` : ""}
+          {fullPath}{blockType ? ` · ${blockType}` : ""}
         </span>
       )}
     </span>

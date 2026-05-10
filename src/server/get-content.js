@@ -98,7 +98,9 @@ export async function getCmsDataSources(config, slug, options) {
  * blocks (ISR-cached under `cmsCacheTag(slug)`, invalidated on admin save)
  * and its DataSource blocks (`cache: "no-store"`, freshly resolved upstream)
  * in parallel, then merge so each DataSource block carries its current
- * `.data` payload.
+ * `.data` payload. Also fetches `config.globalSlug` (header/footer/site
+ * settings) and stamps each block with its source slug so the save layer
+ * later PUTs each one back to the right place.
  *
  * Use from `app/page.jsx` Server Components when the page mixes editable
  * static content with dynamic data sources (news lists, schedules, etc.).
@@ -119,12 +121,34 @@ export async function getCmsPageBlocks(config, slug, options) {
     options?.dataSourceOptions?.accessToken ??
     (await getClientCredentialsToken());
 
-  const [content, dataSources] = await Promise.all([
+  const globalSlug = config.globalSlug && config.globalSlug !== slug
+    ? config.globalSlug
+    : null;
+
+  const [content, dataSources, globalContent] = await Promise.all([
     getCmsContent(config, slug, { ...options?.contentOptions, accessToken }),
     getCmsDataSources(config, slug, { ...options?.dataSourceOptions, accessToken }),
+    globalSlug
+      ? getCmsContent(config, globalSlug, { ...options?.contentOptions, accessToken }).catch(() => ({ slug: globalSlug, blocks: [] }))
+      : Promise.resolve({ slug: "", blocks: [] }),
   ]);
 
-  return mergeDataSourceBlocks(content.blocks, dataSources.blocks);
+  const pageBlocks = mergeDataSourceBlocks(content.blocks, dataSources.blocks)
+    .map((b) => ({ ...b, _slug: slug }));
+
+  if (!globalSlug || globalContent.blocks.length === 0) return pageBlocks;
+
+  // Page wins on a path collision (shouldn't happen when discovery is the
+  // source of truth, but be defensive). Otherwise append global blocks at
+  // the bottom of the list - the AdminDrawer reads sortOrder per slug,
+  // which keeps each group internally ordered.
+  /** @type {Set<string>} */
+  const pagePaths = new Set(pageBlocks.map((b) => b.blockPath));
+  const stampedGlobal = globalContent.blocks
+    .filter((b) => !pagePaths.has(b.blockPath))
+    .map((b) => ({ ...b, _slug: globalSlug }));
+
+  return [...pageBlocks, ...stampedGlobal];
 }
 
 /**

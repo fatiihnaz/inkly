@@ -58,8 +58,15 @@ import {
   pageTitleStyle,
   statusPillStyle,
   statusDotStyle,
-  sectionLabelStyle,
-  sectionLabelCountStyle,
+  tabBarStyle,
+  tabButtonStyle,
+  tabButtonActiveStyle,
+  tabCountBadgeStyle,
+  groupCardStyle,
+  groupHeaderStyle,
+  groupNameStyle,
+  groupCountStyle,
+  groupBodyStyle,
   listStyle,
   blockCardStyle,
   blockHeaderStyle,
@@ -113,15 +120,78 @@ export function AdminDrawer() {
   const { savePage, isSaving, error } = useCmsAdmin();
   const pathname = usePathname() ?? "/";
 
-  const blockList = useMemo(
-    () => Array.from(blocks.values()).sort((a, b) => a.sortOrder - b.sortOrder),
-    [blocks],
-  );
+  // Split the blocks map into page-scoped and globally-scoped lists. Each
+  // group keeps its own sortOrder ordering; page comes first, global
+  // (header/footer/site-wide) is shown in a separate section so it's
+  // obvious which block lives where. Blocks without `_slug` are treated
+  // as page-scoped (legacy fetches that haven't been re-fetched yet).
+  const { pageBlockList, globalBlockList } = useMemo(() => {
+    /** @type {BlockResponse[]} */
+    const pages = [];
+    /** @type {BlockResponse[]} */
+    const globals = [];
+    for (const block of blocks.values()) {
+      const slug = block._slug ?? pathname;
+      if (slug === pathname) pages.push(block);
+      else globals.push(block);
+    }
+    pages.sort((a, b) => a.sortOrder - b.sortOrder);
+    globals.sort((a, b) => a.sortOrder - b.sortOrder);
+    return { pageBlockList: pages, globalBlockList: globals };
+  }, [blocks, pathname]);
 
-  // Auto-open the panel when an EditableRegion in the page is clicked.
+  // Top-level tab state. "page" shows the current page's blocks; "global"
+  // shows shared blocks (header/footer/site-wide). Switches automatically
+  // when an EditableRegion belonging to the other tab is clicked.
+  const [activeTab, setActiveTab] = useState(/** @type {"page"|"global"} */ ("page"));
+
+  // Per-group collapse state. Storing the *closed* set (not open) means new
+  // groups arriving via discovery default to expanded - which is what users
+  // want on first sync.
+  const [closedGroups, setClosedGroups] = useState(/** @type {Set<string>} */ (new Set()));
+
+  const toggleGroup = (group) => {
+    const closing = !closedGroups.has(group);
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+    // Closing a group with the active block inside it: drop the active
+    // selection too. Otherwise the BlockCard's isActive useEffect
+    // re-expands it the moment the group is reopened, producing a flash
+    // of the previously-open editor before it settles back to collapsed.
+    // Run this *outside* the setClosedGroups updater - React invokes
+    // updater functions during render, and triggering another component's
+    // setState from inside one warns "Cannot update ... while rendering".
+    if (closing && activeBlock && blockPathPrefix(activeBlock) === group) {
+      setActiveBlock(null);
+    }
+  };
+
+  // Auto-open the panel when an EditableRegion in the page is clicked, and
+  // switch to the tab that holds it so the matching block card scrolls into
+  // view instead of staying hidden behind the wrong tab.
   useEffect(() => {
-    if (activeBlock && !isDrawerOpen) setDrawerOpen(true);
-  }, [activeBlock, isDrawerOpen, setDrawerOpen]);
+    if (!activeBlock) return;
+    if (!isDrawerOpen) setDrawerOpen(true);
+    const block = blocks.get(activeBlock);
+    if (!block) return;
+    const slug = block._slug ?? pathname;
+    const tab = slug === pathname ? "page" : "global";
+    setActiveTab(tab);
+    // Make sure the active block's group is expanded. Ungrouped blocks
+    // (no dot in path) have no group card, so there's nothing to expand.
+    const prefix = blockPathPrefix(block.blockPath);
+    if (prefix == null) return;
+    setClosedGroups((prev) => {
+      if (!prev.has(prefix)) return prev;
+      const next = new Set(prev);
+      next.delete(prefix);
+      return next;
+    });
+  }, [activeBlock, blocks, pathname, isDrawerOpen, setDrawerOpen]);
 
   // Build the list of dirty updates. A draft is "dirty" if its serialised
   // form differs from the saved value - JSON.stringify works for both
@@ -175,14 +245,28 @@ export function AdminDrawer() {
         <div style={paneContainerStyle}>
           <PanelHeader breadcrumbs={breadcrumbs} dirty={dirtyCount > 0} />
 
-          <BlockList
-            blockList={blockList}
+          <TabBar
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            pageCount={pageBlockList.length}
+            globalCount={globalBlockList.length}
+          />
+
+          <GroupedBlockList
+            blockList={activeTab === "page" ? pageBlockList : globalBlockList}
             drafts={drafts}
             setDraft={setDraft}
             clearDraft={clearDraft}
             activeBlockPath={activeBlock}
             onFocus={setActiveBlock}
             itemSchemas={itemSchemas}
+            closedGroups={closedGroups}
+            onToggleGroup={toggleGroup}
+            emptyHint={
+              activeTab === "page"
+                ? "Bu sayfada düzenlenebilir blok yok. Yeni bloklar eklemek için manifest sync'ini çalıştır."
+                : "Henüz scope=\"global\" işaretli blok yok."
+            }
           />
 
           {error ? (
@@ -297,6 +381,56 @@ function PanelHeader({ breadcrumbs, dirty }) {
 
 /**
  * @param {{
+ *   activeTab: "page" | "global",
+ *   onChange: (tab: "page" | "global") => void,
+ *   pageCount: number,
+ *   globalCount: number,
+ * }} props
+ */
+function TabBar({ activeTab, onChange, pageCount, globalCount }) {
+  return (
+    <div style={tabBarStyle} role="tablist">
+      <TabButton
+        label="Sayfa"
+        count={pageCount}
+        active={activeTab === "page"}
+        onClick={() => onChange("page")}
+      />
+      <TabButton
+        label="Genel"
+        count={globalCount}
+        active={activeTab === "global"}
+        onClick={() => onChange("global")}
+      />
+    </div>
+  );
+}
+
+/**
+ * @param {{ label: string, count: number, active: boolean, onClick: () => void }} props
+ */
+function TabButton({ label, count, active, onClick }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={active ? { ...tabButtonStyle, ...tabButtonActiveStyle } : tabButtonStyle}
+    >
+      <span>{label}</span>
+      <span style={tabCountBadgeStyle}>{count}</span>
+    </button>
+  );
+}
+
+/**
+ * Render the active tab's blocks grouped by blockPath prefix. Within each
+ * group blocks keep their sortOrder. A group is the part of the path
+ * before the first dot (e.g. "header.brand" -> "header"); paths without a
+ * dot land in their own single-item group named after themselves.
+ *
+ * @param {{
  *   blockList: BlockResponse[],
  *   drafts: Map<string, *>,
  *   setDraft: (blockPath: string, value: *) => void,
@@ -304,47 +438,178 @@ function PanelHeader({ breadcrumbs, dirty }) {
  *   activeBlockPath: string | null,
  *   onFocus: (blockPath: string | null) => void,
  *   itemSchemas: Map<string, import("../lib/schemas.js").ItemSchema>,
+ *   closedGroups: Set<string>,
+ *   onToggleGroup: (group: string) => void,
+ *   emptyHint: string,
  * }} props
  */
-function BlockList({ blockList, drafts, setDraft, clearDraft, activeBlockPath, onFocus, itemSchemas }) {
+function GroupedBlockList({
+  blockList, drafts, setDraft, clearDraft, activeBlockPath, onFocus,
+  itemSchemas, closedGroups, onToggleGroup, emptyHint,
+}) {
+  const chunks = useMemo(() => chunkBlocksByPrefix(blockList), [blockList]);
+
   return (
     <section style={paneStyle}>
-      <div style={sectionLabelStyle}>
-        <span>Bloklar</span>
-        <span style={sectionLabelCountStyle}>{blockList.length}</span>
-      </div>
-
       {blockList.length === 0 ? (
-        <div style={emptyStateStyle}>
-          Bu sayfada düzenlenebilir blok yok. Yeni bloklar eklemek için
-          manifest sync'ini çalıştır.
-        </div>
+        <div style={emptyStateStyle}>{emptyHint}</div>
       ) : (
         <ul style={listStyle} data-cms-list>
-          {blockList.map((block, i) => (
-            <motion.li
-              key={block.blockPath}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(i * 0.02, 0.2), duration: 0.2 }}
-              style={{ listStyle: "none" }}
-            >
-              <BlockCard
-                block={block}
-                draft={drafts.get(block.blockPath)}
-                hasDraft={drafts.has(block.blockPath)}
-                isActive={activeBlockPath === block.blockPath}
-                onChange={(v) => setDraft(block.blockPath, v)}
-                onReset={() => clearDraft(block.blockPath)}
-                onFocus={() => onFocus(block.blockPath)}
-                itemSchema={itemSchemas.get(block.blockPath) ?? null}
-              />
-            </motion.li>
-          ))}
+          {chunks.map((chunk) =>
+            chunk.type === "single" ? (
+              <li key={`s:${chunk.block.blockPath}`} style={{ listStyle: "none" }}>
+                <BlockCard
+                  block={chunk.block}
+                  draft={drafts.get(chunk.block.blockPath)}
+                  hasDraft={drafts.has(chunk.block.blockPath)}
+                  isActive={activeBlockPath === chunk.block.blockPath}
+                  onChange={(v) => setDraft(chunk.block.blockPath, v)}
+                  onReset={() => clearDraft(chunk.block.blockPath)}
+                  onFocus={() => onFocus(chunk.block.blockPath)}
+                  itemSchema={itemSchemas.get(chunk.block.blockPath) ?? null}
+                />
+              </li>
+            ) : (
+              <li key={`g:${chunk.name}`} style={{ listStyle: "none" }}>
+                <GroupCard
+                  groupName={chunk.name}
+                  blocks={chunk.blocks}
+                  drafts={drafts}
+                  setDraft={setDraft}
+                  clearDraft={clearDraft}
+                  activeBlockPath={activeBlockPath}
+                  onFocus={onFocus}
+                  itemSchemas={itemSchemas}
+                  isOpen={!closedGroups.has(chunk.name)}
+                  onToggle={() => onToggleGroup(chunk.name)}
+                />
+              </li>
+            ),
+          )}
         </ul>
       )}
     </section>
   );
+}
+
+/**
+ * @param {{
+ *   groupName: string,
+ *   blocks: BlockResponse[],
+ *   drafts: Map<string, *>,
+ *   setDraft: (blockPath: string, value: *) => void,
+ *   clearDraft: (blockPath: string) => void,
+ *   activeBlockPath: string | null,
+ *   onFocus: (blockPath: string | null) => void,
+ *   itemSchemas: Map<string, import("../lib/schemas.js").ItemSchema>,
+ *   isOpen: boolean,
+ *   onToggle: () => void,
+ * }} props
+ */
+function GroupCard({
+  groupName, blocks, drafts, setDraft, clearDraft, activeBlockPath, onFocus,
+  itemSchemas, isOpen, onToggle,
+}) {
+  return (
+    <div style={groupCardStyle}>
+      <div style={groupHeaderStyle} onClick={onToggle}>
+        <span style={groupNameStyle}>{groupName}</span>
+        <span style={groupCountStyle}>{blocks.length}</span>
+        <motion.span
+          initial={false}
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ display: "inline-flex", color: TEXT_MUTED }}
+        >
+          <ChevronDown size={13} />
+        </motion.span>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isOpen ? (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.32, 0.72, 0.18, 1] }}
+            style={{ overflow: "hidden" }}
+          >
+            <div style={groupBodyStyle}>
+              {blocks.map((block) => (
+                <BlockCard
+                  key={block.blockPath}
+                  block={block}
+                  draft={drafts.get(block.blockPath)}
+                  hasDraft={drafts.has(block.blockPath)}
+                  isActive={activeBlockPath === block.blockPath}
+                  onChange={(v) => setDraft(block.blockPath, v)}
+                  onReset={() => clearDraft(block.blockPath)}
+                  onFocus={() => onFocus(block.blockPath)}
+                  itemSchema={itemSchemas.get(block.blockPath) ?? null}
+                />
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * Group prefix is the slice before the first dot. Paths without a dot
+ * have no group - returning null tells the caller to render them flat
+ * (no group card) instead of inventing a single-item group named after
+ * the path itself.
+ *
+ * @param {string} blockPath
+ * @returns {string | null}
+ */
+function blockPathPrefix(blockPath) {
+  const dot = blockPath.indexOf(".");
+  return dot === -1 ? null : blockPath.slice(0, dot);
+}
+
+/**
+ * @typedef {{ type: "single", block: BlockResponse }
+ *         | { type: "group", name: string, blocks: BlockResponse[] }} BlockChunk
+ */
+
+/**
+ * Walk blocks in their incoming sortOrder and emit a flat list of chunks.
+ * An ungrouped block (no dot in path) becomes a `single` chunk in place;
+ * blocks sharing a prefix collapse into one `group` chunk that lives at
+ * the prefix's *first* appearance. Result:
+ *
+ *   hero.title (1), hero.image (2), primary (3), skydays.eventdate (4)
+ *   -> [Hero(2 items), primary(single), Skydays(1 item)]
+ *
+ * @param {BlockResponse[]} blocks
+ * @returns {BlockChunk[]}
+ */
+function chunkBlocksByPrefix(blocks) {
+  /** @type {BlockChunk[]} */
+  const chunks = [];
+  /** @type {Map<string, number>} */
+  const groupChunkIndex = new Map();
+
+  for (const block of blocks) {
+    const prefix = blockPathPrefix(block.blockPath);
+    if (prefix == null) {
+      chunks.push({ type: "single", block });
+      continue;
+    }
+    const existing = groupChunkIndex.get(prefix);
+    if (existing != null) {
+      const chunk = chunks[existing];
+      if (chunk.type === "group") chunk.blocks.push(block);
+      continue;
+    }
+    groupChunkIndex.set(prefix, chunks.length);
+    chunks.push({ type: "group", name: prefix, blocks: [block] });
+  }
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------

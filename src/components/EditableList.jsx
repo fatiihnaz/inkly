@@ -38,10 +38,11 @@
  * item). Both must be plain literals.
  */
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useContext, useEffect, useState } from "react";
 import { Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 
 import { useCmsContext } from "../lib/context.js";
+import { CmsGroupContext } from "../lib/group-context.js";
 
 /**
  * @import { ItemSchema } from "../lib/schemas.js"
@@ -57,6 +58,10 @@ import { useCmsContext } from "../lib/context.js";
  * @property {*[]} [defaultValue]
  *   Discovery-only seed. Default `[]` (empty list). Lists usually start
  *   empty; pass an array if you need pre-seeded items at first sync.
+ * @property {"global"} [scope]
+ *   Discovery-only. Set to `"global"` to share the list across every
+ *   page (header/footer style). Runtime ignores it - the merged blocks
+ *   map already contains both page and global blocks.
  */
 
 const ITEM_RING       = "inset 0 0 0 1.5px rgba(201,184,150,0.30)";
@@ -72,25 +77,31 @@ const PANEL_BORDER    = "1px solid rgba(255,255,255,0.10)";
 /**
  * @param {EditableListProps} props
  */
-export function EditableList({ blockPath, itemSchema, children, defaultValue }) {
-  void defaultValue; // discovery-only
+export function EditableList({ blockPath, itemSchema, children, defaultValue, scope }) {
+  void defaultValue; void scope; // discovery-only
   const {
     isAdmin, blocks, drafts, setDraft,
     registerItemSchema, unregisterItemSchema,
   } = useCmsContext();
+  const groupPrefix = useContext(CmsGroupContext);
+
+  // Auto-prefix when wrapped in a `<CmsGroup>`. Discovery applies the same
+  // rule statically so the manifest entry's path matches the runtime
+  // lookup key.
+  const fullPath = groupPrefix ? `${groupPrefix}.${blockPath}` : blockPath;
 
   // Hand the schema to the AdminDrawer so it can build the per-field item
-  // editor. Re-runs only when blockPath changes; itemSchema reference flips
+  // editor. Re-runs only when fullPath changes; itemSchema reference flips
   // on every render but the registry's value is read on demand by the
   // drawer, so refreshing the same blockPath -> schema mapping is cheap.
   useEffect(() => {
-    registerItemSchema(blockPath, itemSchema);
-    return () => unregisterItemSchema(blockPath);
-  }, [blockPath, itemSchema, registerItemSchema, unregisterItemSchema]);
+    registerItemSchema(fullPath, itemSchema);
+    return () => unregisterItemSchema(fullPath);
+  }, [fullPath, itemSchema, registerItemSchema, unregisterItemSchema]);
 
-  const block = blocks.get(blockPath);
-  const raw = drafts.has(blockPath)
-    ? drafts.get(blockPath)
+  const block = blocks.get(fullPath);
+  const raw = drafts.has(fullPath)
+    ? drafts.get(fullPath)
     : block
       ? block.value
       : undefined;
@@ -98,7 +109,7 @@ export function EditableList({ blockPath, itemSchema, children, defaultValue }) 
   const items = Array.isArray(raw) ? raw : [];
 
   /** @param {Record<string, *>[]} next */
-  const setItems = (next) => setDraft(blockPath, next);
+  const setItems = (next) => setDraft(fullPath, next);
 
   if (!isAdmin) {
     return (

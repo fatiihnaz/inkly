@@ -61,6 +61,11 @@ const UNRESOLVED = Symbol("unresolved");
  * @property {BlockType} blockType
  * @property {*} defaultValue
  * @property {import("../lib/schemas.js").ItemSchema} [itemSchema]  List blocks only.
+ * @property {string} [scope]
+ *   Discovery scope marker. When `"global"`, the region is written to the
+ *   `globalSlug` manifest entry instead of any page slug, so a header/footer
+ *   declared once is shared across every page. Undefined = page-scoped (the
+ *   region follows the withCms slug it's reachable from).
  */
 
 /**
@@ -86,7 +91,8 @@ const UNRESOLVED = Symbol("unresolved");
 
 /**
  * @typedef {Object} DiscoverManifestsOptions
- * @property {string} [appRoot]   Directory to scan. Default: `process.cwd()/app`.
+ * @property {string} [appRoot]      Directory to scan. Default: `process.cwd()/app`.
+ * @property {string} [globalSlug]   Slug to receive `scope="global"` regions. Default: `"__global"`.
  */
 
 /**
@@ -95,6 +101,7 @@ const UNRESOLVED = Symbol("unresolved");
  */
 export async function discoverManifests(options = {}) {
   const appRoot = options.appRoot ?? path.resolve(process.cwd(), "app");
+  const globalSlug = options.globalSlug ?? "__global";
 
   const files = await collectSourceFiles(appRoot);
   /** @type {Map<string, FileAnalysis>} */
@@ -111,6 +118,11 @@ export async function discoverManifests(options = {}) {
   /** @type {Map<string, Map<string, ManifestBlockItem>>} */
   const bySlug = new Map();
 
+  // Page-scoped regions: walk every withCms root, follow imports DFS, drop
+  // each non-global region under the page's slug. Global regions are
+  // skipped here and collected separately below so they don't leak into
+  // any page slug (and so a Header/Footer declared on multiple pages
+  // doesn't get duplicated as a regular block).
   for (const [rootFile, analysis] of analyses) {
     if (analysis.withCmsSlugs.length === 0) continue;
     for (const slug of analysis.withCmsSlugs) {
@@ -123,17 +135,25 @@ export async function discoverManifests(options = {}) {
 
       let nextSortOrder = blockMap.size + 1;
       for (const region of ordered) {
+        if (region.scope === "global") continue;
         if (blockMap.has(region.blockPath)) continue;
-        /** @type {ManifestBlockItem} */
-        const entry = {
-          blockPath: region.blockPath,
-          blockType: region.blockType,
-          defaultValue: region.defaultValue,
-          sortOrder: nextSortOrder++,
-        };
-        if (region.itemSchema) entry.itemSchema = region.itemSchema;
-        blockMap.set(region.blockPath, entry);
+        blockMap.set(region.blockPath, regionToEntry(region, nextSortOrder++));
       }
+    }
+  }
+
+  // Global-scoped regions: across the whole app tree, dedup by blockPath.
+  // sortOrder follows file traversal order (collectSourceFiles is a stable
+  // recursive directory walk) so the Drawer lists header/footer fields in
+  // a stable order regardless of which page is loaded.
+  /** @type {Map<string, ManifestBlockItem>} */
+  const globalMap = new Map();
+  let globalSortOrder = 1;
+  for (const analysis of analyses.values()) {
+    for (const region of analysis.regions) {
+      if (region.scope !== "global") continue;
+      if (globalMap.has(region.blockPath)) continue;
+      globalMap.set(region.blockPath, regionToEntry(region, globalSortOrder++));
     }
   }
 
@@ -142,9 +162,29 @@ export async function discoverManifests(options = {}) {
   for (const [slug, blockMap] of bySlug) {
     manifests.push({ slug, blocks: [...blockMap.values()] });
   }
+  if (globalMap.size > 0) {
+    manifests.push({ slug: globalSlug, blocks: [...globalMap.values()] });
+  }
   manifests.sort((a, b) => a.slug.localeCompare(b.slug));
 
   return { manifests, warnings };
+}
+
+/**
+ * @param {DiscoveredRegion} region
+ * @param {number} sortOrder
+ * @returns {ManifestBlockItem}
+ */
+function regionToEntry(region, sortOrder) {
+  /** @type {ManifestBlockItem} */
+  const entry = {
+    blockPath: region.blockPath,
+    blockType: region.blockType,
+    defaultValue: region.defaultValue,
+    sortOrder,
+  };
+  if (region.itemSchema) entry.itemSchema = region.itemSchema;
+  return entry;
 }
 
 /**
@@ -252,10 +292,44 @@ async function analyzeFile(filePath) {
   /** @type {DiscoveryWarning[]} */
   const warnings = [];
 
+  // Stack of `<CmsGroup name>` prefixes. Pushed on JSXElement enter for any
+  // CmsGroup wrapper, popped on exit. JSXOpeningElement visits for child
+  // EditableRegion/EditableList read this stack and prepend the joined
+  // prefix to the static blockPath - mirroring the runtime behaviour where
+  // `<CmsGroup>` provides a React context to descendant components.
+  /** @type {string[]} */
+  const groupStack = [];
+  const currentPrefix = () => groupStack.filter(Boolean).join(".");
+
   traverse(ast, {
     ImportDeclaration(p) {
       const resolved = resolveImport(filePath, p.node.source.value);
       if (resolved) analysis.imports.push(resolved);
+    },
+    JSXElement: {
+      enter(p) {
+        const opening = p.node.openingElement;
+        if (opening.name.type !== "JSXIdentifier") return;
+        if (opening.name.name !== "CmsGroup") return;
+        const props = readJsxProps(opening);
+        if (typeof props.name !== "string") {
+          warnings.push({
+            file: filePath,
+            loc: locOf(opening),
+            message:
+              "<CmsGroup> needs a static string `name` prop. Treating as a transparent wrapper - blockPaths inside won't be prefixed.",
+          });
+          groupStack.push(""); // placeholder so exit() pops the matching push
+          return;
+        }
+        groupStack.push(props.name);
+      },
+      exit(p) {
+        const opening = p.node.openingElement;
+        if (opening.name.type !== "JSXIdentifier") return;
+        if (opening.name.name !== "CmsGroup") return;
+        groupStack.pop();
+      },
     },
     CallExpression(p) {
       const callee = p.node.callee;
@@ -314,11 +388,11 @@ async function analyzeFile(filePath) {
       if (name.type !== "JSXIdentifier") return;
 
       if (name.name === "EditableRegion") {
-        handleEditableRegion(p.node, filePath, analysis, warnings);
+        handleEditableRegion(p.node, filePath, analysis, warnings, currentPrefix());
         return;
       }
       if (name.name === "EditableList") {
-        handleEditableList(p.node, filePath, analysis, warnings);
+        handleEditableList(p.node, filePath, analysis, warnings, currentPrefix());
         return;
       }
     },
@@ -330,20 +404,24 @@ async function analyzeFile(filePath) {
 /**
  * Pull a static `<EditableRegion>` declaration into the file analysis.
  * Required props: blockPath, blockType, defaultValue. Anything missing
- * yields a warning and the region is skipped.
+ * yields a warning and the region is skipped. `groupPrefix` is the joined
+ * stack of enclosing `<CmsGroup>` names; when non-empty it's prepended to
+ * the blockPath so the manifest matches what the runtime context lookup
+ * produces.
  *
  * @param {*} openingNode
  * @param {string} filePath
  * @param {FileAnalysis} analysis
  * @param {DiscoveryWarning[]} warnings
+ * @param {string} groupPrefix
  */
-function handleEditableRegion(openingNode, filePath, analysis, warnings) {
+function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPrefix) {
   const props = readJsxProps(openingNode);
-  const blockPath = props.blockPath;
+  const rawBlockPath = props.blockPath;
   const blockType = props.blockType;
   const hasDefault = Object.prototype.hasOwnProperty.call(props, "defaultValue");
 
-  if (typeof blockPath !== "string") {
+  if (typeof rawBlockPath !== "string") {
     warnings.push({
       file: filePath,
       loc: locOf(openingNode),
@@ -352,6 +430,8 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings) {
     });
     return;
   }
+  const blockPath = groupPrefix ? `${groupPrefix}.${rawBlockPath}` : rawBlockPath;
+
   if (typeof blockType !== "string") {
     warnings.push({
       file: filePath,
@@ -369,17 +449,22 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings) {
     return;
   }
 
-  analysis.regions.push({
+  /** @type {DiscoveredRegion} */
+  const region = {
     blockPath,
     blockType: /** @type {BlockType} */ (blockType),
     defaultValue: props.defaultValue,
-  });
+  };
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  if (scope) region.scope = scope;
+  analysis.regions.push(region);
 }
 
 /**
  * Pull a static `<EditableList>` declaration into the file analysis.
  * Required props: blockPath, itemSchema. `defaultValue` is optional and
- * defaults to `[]` (empty list) - lists usually start empty.
+ * defaults to `[]` (empty list) - lists usually start empty. `groupPrefix`
+ * applies the same `<CmsGroup>` prefix rule used for EditableRegion.
  *
  * The itemSchema must be a plain object literal. Each value is itself a
  * `{ blockType, defaultValue }` literal pair; that's the manifest's
@@ -389,13 +474,14 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings) {
  * @param {string} filePath
  * @param {FileAnalysis} analysis
  * @param {DiscoveryWarning[]} warnings
+ * @param {string} groupPrefix
  */
-function handleEditableList(openingNode, filePath, analysis, warnings) {
+function handleEditableList(openingNode, filePath, analysis, warnings, groupPrefix) {
   const props = readJsxProps(openingNode);
-  const blockPath = props.blockPath;
+  const rawBlockPath = props.blockPath;
   const itemSchema = props.itemSchema;
 
-  if (typeof blockPath !== "string") {
+  if (typeof rawBlockPath !== "string") {
     warnings.push({
       file: filePath,
       loc: locOf(openingNode),
@@ -404,6 +490,7 @@ function handleEditableList(openingNode, filePath, analysis, warnings) {
     });
     return;
   }
+  const blockPath = groupPrefix ? `${groupPrefix}.${rawBlockPath}` : rawBlockPath;
   if (!isValidItemSchema(itemSchema)) {
     warnings.push({
       file: filePath,
@@ -426,12 +513,40 @@ function handleEditableList(openingNode, filePath, analysis, warnings) {
     return;
   }
 
-  analysis.regions.push({
+  /** @type {DiscoveredRegion} */
+  const region = {
     blockPath,
     blockType: /** @type {BlockType} */ ("List"),
     defaultValue,
     itemSchema,
+  };
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  if (scope) region.scope = scope;
+  analysis.regions.push(region);
+}
+
+/**
+ * Validate the `scope` prop. Only `"global"` is accepted today; anything
+ * else yields a warning and the region is treated as page-scoped (the
+ * safer default). Missing scope is silent — that's the common path.
+ *
+ * @param {Record<string, *>} props
+ * @param {*} openingNode
+ * @param {string} blockPath
+ * @param {string} filePath
+ * @param {DiscoveryWarning[]} warnings
+ * @returns {string | null}
+ */
+function readScopeProp(props, openingNode, blockPath, filePath, warnings) {
+  if (!Object.prototype.hasOwnProperty.call(props, "scope")) return null;
+  const scope = props.scope;
+  if (scope === "global") return "global";
+  warnings.push({
+    file: filePath,
+    loc: locOf(openingNode),
+    message: `<EditableRegion blockPath="${blockPath}"> has unsupported scope=${JSON.stringify(scope)}. Treating as page-scoped. Only "global" is recognized today.`,
   });
+  return null;
 }
 
 /**
