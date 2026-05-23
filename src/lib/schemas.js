@@ -17,9 +17,15 @@
  *                       (each object's keys map to leaf block types). The whole
  *                       list shares one `version` - all reorder/add/remove/edit
  *                       operations save atomically.
- *   - DataSource      : Consumed by code; no inline rendering.
+ *   - Collection      : Read-only binding to the backend's `/cms/collections/{key}` API.
+ *                       `value` carries `{ collection: string, slug?: string }`;
+ *                       resolved items are fetched separately by the SDK and
+ *                       handed to consumer render-props (`<CollectionRegion>` /
+ *                       `<CollectionItem>`). No inline editing - writes happen
+ *                       in the collection's own admin surface (e.g. team leader
+ *                       portal). CMS just surfaces the data here.
  *
- * @typedef {"Text" | "RichText" | "Image" | "Link" | "Date" | "List" | "DataSource"} BlockType
+ * @typedef {"Text" | "RichText" | "Image" | "Link" | "Date" | "List" | "Collection"} BlockType
  */
 
 /**
@@ -29,7 +35,7 @@
  * supported in this iteration.
  *
  * @typedef {Object} ItemSchemaField
- * @property {Exclude<BlockType, "List" | "DataSource">} blockType
+ * @property {Exclude<BlockType, "List" | "Collection">} blockType
  * @property {*} defaultValue
  */
 
@@ -43,10 +49,16 @@
  * @typedef {Object} BlockResponse
  * @property {string} blockPath  Dot-notation path, e.g. "hero.title".
  * @property {BlockType} blockType
- * @property {*} value           Arbitrary JSON; shape depends on blockType.
+ * @property {*} value
+ *   Arbitrary JSON; shape depends on blockType. For Collection blocks
+ *   this carries `{ collection: string, slug?: string }` - the binding
+ *   the SDK uses to resolve items from `/cms/collections/{key}`. The
+ *   resolved items themselves are NOT stored here; consumer-side
+ *   `<CollectionRegion>`/`<CollectionItem>` fetch them at render time
+ *   so the cache tag (`cms-collection-{key}`) lives independently of
+ *   the page slug.
  * @property {number} sortOrder
  * @property {number} version    Used for optimistic concurrency.
- * @property {*|null} data       Resolved DataSource payload, else null.
  * @property {*|null} [draftValue]
  *   Admin-only overlay. Non-null when the backend's Redis layer holds a
  *   pending draft for this block; in that case `value` carries the
@@ -58,6 +70,37 @@
  *   Client-side hint stamped by the SDK after fetch so the save layer
  *   knows which slug to PUT each block back to. Not part of the wire
  *   payload - the backend doesn't return or expect it.
+ */
+
+/**
+ * Binding stored as a Collection block's `value`. Discovery emits this
+ * from `<CollectionRegion collection="..." />` / `<CollectionItem
+ * collection="..." slug="..." />`. Backend stores it verbatim; the SDK
+ * uses it at render time to resolve items.
+ *
+ * @typedef {Object} CollectionBinding
+ * @property {string} collection   Backend collection key (e.g. "Teams", "News"). Case-insensitive at the API level but discovery normalises to PascalCase.
+ * @property {string} [slug]       When set, the block resolves a single item via `GET /cms/collections/{key}/{slug}`. Omit for list bindings (`GET /cms/collections/{key}`).
+ */
+
+/**
+ * One row returned by `GET /cms/collections/{key}` (list) or
+ * `GET /cms/collections/{key}/{slug}` (single). Backend-owned shape;
+ * `data` is the per-collection payload (Team/News/...). Filtering
+ * (status / publishedAt / category) will land at the API level via
+ * query params; not yet implemented.
+ *
+ * @typedef {Object} CollectionItemResponse
+ * @property {string} id
+ * @property {string} collectionKey
+ * @property {string} slug
+ * @property {*} data
+ * @property {number} version
+ * @property {boolean} canEdit
+ *   Whether the requesting user can write to this row through the
+ *   collection's own admin surface (e.g. team leader portal). The CMS
+ *   itself never writes - this flag is forwarded to render-props so
+ *   consumers can show "edit elsewhere" links.
  */
 
 /**

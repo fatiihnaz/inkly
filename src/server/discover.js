@@ -395,6 +395,14 @@ async function analyzeFile(filePath) {
         handleEditableList(p.node, filePath, analysis, warnings, currentPrefix());
         return;
       }
+      if (name.name === "CollectionRegion") {
+        handleCollectionRegion(p.node, filePath, analysis, warnings, currentPrefix());
+        return;
+      }
+      if (name.name === "CollectionItem") {
+        handleCollectionItem(p.node, filePath, analysis, warnings, currentPrefix());
+        return;
+      }
     },
   });
 
@@ -519,6 +527,110 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
     blockType: /** @type {BlockType} */ ("List"),
     defaultValue,
     itemSchema,
+  };
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  if (scope) region.scope = scope;
+  analysis.regions.push(region);
+}
+
+/**
+ * Pull a static `<CollectionRegion>` declaration into the file analysis.
+ * Required props: blockPath, collection. The collection key is left as
+ * the consumer wrote it (case-insensitive at the API level); the backend
+ * validates against its `CollectionKey` enum at sync time.
+ *
+ * @param {*} openingNode
+ * @param {string} filePath
+ * @param {FileAnalysis} analysis
+ * @param {DiscoveryWarning[]} warnings
+ * @param {string} groupPrefix
+ */
+function handleCollectionRegion(openingNode, filePath, analysis, warnings, groupPrefix) {
+  const props = readJsxProps(openingNode);
+  const rawBlockPath = props.blockPath;
+  const collection = props.collection;
+
+  if (typeof rawBlockPath !== "string") {
+    warnings.push({
+      file: filePath,
+      loc: locOf(openingNode),
+      message:
+        "<CollectionRegion> needs a static blockPath string. Skipping discovery for this region.",
+    });
+    return;
+  }
+  const blockPath = groupPrefix ? `${groupPrefix}.${rawBlockPath}` : rawBlockPath;
+
+  if (typeof collection !== "string") {
+    warnings.push({
+      file: filePath,
+      loc: locOf(openingNode),
+      message: `<CollectionRegion blockPath="${blockPath}"> is missing a static collection string prop. Skipping.`,
+    });
+    return;
+  }
+
+  /** @type {DiscoveredRegion} */
+  const region = {
+    blockPath,
+    blockType: /** @type {BlockType} */ ("Collection"),
+    defaultValue: { collection },
+  };
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  if (scope) region.scope = scope;
+  analysis.regions.push(region);
+}
+
+/**
+ * Pull a static `<CollectionItem>` declaration into the file analysis.
+ * Required props: blockPath, collection, slug. Same case/enum notes as
+ * CollectionRegion; the slug is forwarded verbatim (server lowercases).
+ *
+ * @param {*} openingNode
+ * @param {string} filePath
+ * @param {FileAnalysis} analysis
+ * @param {DiscoveryWarning[]} warnings
+ * @param {string} groupPrefix
+ */
+function handleCollectionItem(openingNode, filePath, analysis, warnings, groupPrefix) {
+  const props = readJsxProps(openingNode);
+  const rawBlockPath = props.blockPath;
+  const collection = props.collection;
+  const slug = props.slug;
+
+  if (typeof rawBlockPath !== "string") {
+    warnings.push({
+      file: filePath,
+      loc: locOf(openingNode),
+      message:
+        "<CollectionItem> needs a static blockPath string. Skipping discovery for this item.",
+    });
+    return;
+  }
+  const blockPath = groupPrefix ? `${groupPrefix}.${rawBlockPath}` : rawBlockPath;
+
+  if (typeof collection !== "string") {
+    warnings.push({
+      file: filePath,
+      loc: locOf(openingNode),
+      message: `<CollectionItem blockPath="${blockPath}"> is missing a static collection string prop. Skipping.`,
+    });
+    return;
+  }
+  if (typeof slug !== "string") {
+    warnings.push({
+      file: filePath,
+      loc: locOf(openingNode),
+      message: `<CollectionItem blockPath="${blockPath}"> is missing a static slug string prop. Skipping.`,
+    });
+    return;
+  }
+
+  /** @type {DiscoveredRegion} */
+  const region = {
+    blockPath,
+    blockType: /** @type {BlockType} */ ("Collection"),
+    defaultValue: { collection, slug },
   };
   const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
   if (scope) region.scope = scope;

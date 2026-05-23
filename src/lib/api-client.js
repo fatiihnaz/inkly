@@ -50,6 +50,10 @@ export class CmsApiError extends Error {
   get isForbidden() {
     return this.status === 403;
   }
+
+  get isNotFound() {
+    return this.status === 404;
+  }
 }
 
 /**
@@ -142,21 +146,56 @@ export async function fetchContent(config, slug, init) {
 }
 
 /**
- * `GET /cms/data?slug={slug}` - DataSource blocks only.
+ * `GET /cms/collections/{key}` - all items in a collection (e.g. "Teams",
+ * "News"). Requires a Bearer token with `cms:access` role; pass it via
+ * `init.headers.Authorization`. Server-side callers typically wire this
+ * through `getCmsCollection` which attaches the service-credentials token
+ * automatically.
  *
  * @param {CmsConfig} config
+ * @param {string} key
+ * @param {RequestInit} [init]
+ * @returns {Promise<import("./schemas.js").CollectionItemResponse[]>}
+ */
+export async function fetchCollection(config, key, init) {
+  const response = await fetch(
+    `${config.baseUrl}/cms/collections/${encodeURIComponent(key)}`,
+    {
+      ...init,
+      method: "GET",
+      headers: { ...baseHeaders(config), ...(init?.headers ?? {}) },
+    },
+  );
+  if (!response.ok) throw await toApiError(response);
+  return /** @type {import("./schemas.js").CollectionItemResponse[]} */ (
+    await response.json()
+  );
+}
+
+/**
+ * `GET /cms/collections/{key}/{slug}` - a single collection item.
+ * Throws `CmsApiError` (with `isNotFound === true`) on 404 so callers
+ * can branch on a single try/catch.
+ *
+ * @param {CmsConfig} config
+ * @param {string} key
  * @param {string} slug
  * @param {RequestInit} [init]
- * @returns {Promise<ContentResponse>}
+ * @returns {Promise<import("./schemas.js").CollectionItemResponse>}
  */
-export async function fetchDataSources(config, slug, init) {
-  const response = await fetch(buildUrl(config, "/data", { slug }), {
-    ...init,
-    method: "GET",
-    headers: { ...baseHeaders(config), ...(init?.headers ?? {}) },
-  });
+export async function fetchCollectionItem(config, key, slug, init) {
+  const response = await fetch(
+    `${config.baseUrl}/cms/collections/${encodeURIComponent(key)}/${encodeURIComponent(slug)}`,
+    {
+      ...init,
+      method: "GET",
+      headers: { ...baseHeaders(config), ...(init?.headers ?? {}) },
+    },
+  );
   if (!response.ok) throw await toApiError(response);
-  return /** @type {ContentResponse} */ (await response.json());
+  return /** @type {import("./schemas.js").CollectionItemResponse} */ (
+    await response.json()
+  );
 }
 
 /**
@@ -277,40 +316,3 @@ export function uploadImage(config, file, onProgress, accessToken) {
   });
 }
 
-/**
- * `GET /cms/sources/{name}?{...query}` - resolve a single named data source.
- *
- * Filters and other query params are flattened into the URL string;
- * arrays / nested objects get JSON-encoded so the backend can
- * deserialise them on the other side. The response body is whatever
- * shape the source's resolver decided to return - typically an array
- * (events, news, members) or a single object (settings, hero card).
- *
- * @param {CmsConfig} config
- * @param {string} sourceName
- * @param {Record<string, *>} [query]
- * @param {RequestInit} [init]
- * @returns {Promise<*>}
- */
-export async function fetchSource(config, sourceName, query, init) {
-  const url = new URL(
-    `${config.baseUrl}/cms/sources/${encodeURIComponent(sourceName)}`,
-  );
-  if (query) {
-    for (const [key, raw] of Object.entries(query)) {
-      if (raw == null) continue;
-      const serialised =
-        typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean"
-          ? String(raw)
-          : JSON.stringify(raw);
-      url.searchParams.set(key, serialised);
-    }
-  }
-  const response = await fetch(url.toString(), {
-    ...init,
-    method: "GET",
-    headers: { ...baseHeaders(config), ...(init?.headers ?? {}) },
-  });
-  if (!response.ok) throw await toApiError(response);
-  return await response.json();
-}
