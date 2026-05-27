@@ -16,12 +16,18 @@
  * and any other open surfaces re-render with the new version.
  */
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { useCmsContext } from "../lib/context.js";
 import { useCollectionItem } from "../hooks/use-collection.js";
 import { useMyCollections } from "../hooks/use-my-collections.js";
-import { upsertCollectionItem, CmsApiError } from "../lib/api-client.js";
+import {
+  upsertCollectionItem,
+  saveCollectionItemDraft,
+  saveCollectionNewDraft,
+  CmsApiError,
+} from "../lib/api-client.js";
+import { stableStringify } from "../lib/stable-stringify.js";
 
 import {
   CollectionFieldsForm,
@@ -31,6 +37,8 @@ import {
 } from "./editors/CollectionFieldsForm.jsx";
 import { TEXT_MUTED, ACCENT } from "./admin-drawer-styles.js";
 
+const DRAFT_DEBOUNCE_MS = 1000;
+
 /**
  * @param {{
  *   collection: string,
@@ -39,24 +47,132 @@ import { TEXT_MUTED, ACCENT } from "./admin-drawer-styles.js";
  * }} props
  */
 export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) {
-  const { config, getAccessToken, updateCollectionItem } = useCmsContext();
+  const {
+    config,
+    getAccessToken,
+    updateCollectionItem,
+    setCollectionDraft,
+    clearCollectionDraft,
+  } = useCmsContext();
   const { collections: my, isLoading: meLoading, error: meError } = useMyCollections();
-  const { item, isLoading: itemLoading, error: itemError, refetch } = useCollectionItem(collection, slug);
+  // Read raw server-side item: the editor must not consume its own
+  // live-edit overlay, otherwise the seeding effect would re-fire on
+  // every keystroke and the autosave debounce would never settle.
+  const { item, isLoading: itemLoading, error: itemError, refetch } = useCollectionItem(
+    collection,
+    slug,
+    { overlayDrafts: false },
+  );
 
   const meta = my.find((c) => c.collectionKey === collection) ?? null;
   const schema = meta?.schema ?? null;
+  const slugSource = meta?.slugSource ?? null;
 
   const [values, setValues] = useState(/** @type {Record<string, *> | null} */ (null));
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const [isPending, startTransition] = useTransition();
+  const [draftStatus, setDraftStatus] = useState(
+    /** @type {"idle"|"saving"|"saved"|"failed"} */ ("idle"),
+  );
 
-  // Seed local form state when both schema + item have arrived. Re-seed
+  // The serialized payload last seen as authoritative — either what the
+  // server returned (data or draftData) or what we just successfully
+  // PUT'd as a draft. Used to avoid re-sending the same payload twice
+  // (initial mount, cache refresh round-trips) and to detect when a
+  // local edit produces nothing actually changed.
+  const lastSyncedRef = useRef(/** @type {string | null} */ (null));
+  const draftStatusResetRef = useRef(
+    /** @type {ReturnType<typeof setTimeout>|null} */ (null),
+  );
+
+  // Seed local form state when both schema + item have arrived. Prefer
+  // the in-progress draft so the admin sees their last in-flight edits
+  // across reloads; fall back to the published data otherwise. Re-seed
   // on refetch / cache update so the form reflects the latest server
-  // state (e.g. after a successful save).
+  // state (e.g. after a successful save clears the draft).
   useEffect(() => {
     if (!schema) return;
-    setValues(seedValues(schema.fields, item?.data ?? {}));
+    const baseline = item?.draftData ?? item?.data ?? {};
+    setValues(seedValues(schema.fields, baseline));
+    lastSyncedRef.current = stableStringify(baseline);
   }, [schema, item]);
+
+  useEffect(() => () => {
+    if (draftStatusResetRef.current) clearTimeout(draftStatusResetRef.current);
+  }, []);
+
+  /** @param {"saved"|"failed"} kind */
+  const flashDraftStatus = (kind) => {
+    setDraftStatus(kind);
+    if (draftStatusResetRef.current) clearTimeout(draftStatusResetRef.current);
+    draftStatusResetRef.current = setTimeout(() => {
+      setDraftStatus("idle");
+      draftStatusResetRef.current = null;
+    }, 900);
+  };
+
+  // Debounced draft autosave. Every change to the local `values` resets
+  // a 1s timer; when it fires we PUT the current payload to the matching
+  // draft endpoint (item draft for published rows, new-item draft for
+  // virtual / version=0 rows). The backend Redis store has a 7-day TTL
+  // and a successful publish auto-clears the item-draft slot, so this
+  // effect is purely write-side: no GET coordination needed. Reseed
+  // useEffect above resyncs `lastSyncedRef` after the cache picks up a
+  // publish, preventing an autosave loop against the just-saved value.
+  useEffect(() => {
+    if (!schema || !values) return undefined;
+    if (!item?.canEdit) return undefined;
+    if (isPending) return undefined;
+
+    const payload = buildPayload(schema.fields, values);
+    const serialized = stableStringify(payload);
+
+    // Live-preview overlay for page-side consumers. Push happens
+    // synchronously on every change so `<CollectionItem>` /
+    // `<CollectionRegion>` re-render in lockstep with the form. When
+    // the user types back to the server's view, drop the overlay so
+    // they fall back to `draftData ?? data` (no spurious diff).
+    if (serialized === lastSyncedRef.current) {
+      clearCollectionDraft(collection, slug);
+      return undefined;
+    }
+    setCollectionDraft(collection, slug, payload);
+
+    const isVirtualNow = !item || item.version === 0;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const token = await getAccessToken();
+        const init = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+        setDraftStatus("saving");
+        if (isVirtualNow) {
+          // AutoGenerated: backend derives slug on publish; don't send one.
+          // RoleDerived / UserDefined: backend requires the slug to know
+          // which virtual entry this draft belongs to.
+          const body = slugSource === "AutoGenerated"
+            ? { data: payload }
+            : { slug, data: payload };
+          await saveCollectionNewDraft(config, collection, body, init);
+        } else {
+          await saveCollectionItemDraft(config, collection, slug, { data: payload }, init);
+        }
+        if (cancelled) return;
+        lastSyncedRef.current = serialized;
+        flashDraftStatus("saved");
+      } catch (err) {
+        if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.warn("[skylab-cms] collection draft autosave failed:", err);
+        flashDraftStatus("failed");
+      }
+    }, DRAFT_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, item, schema, slugSource, slug, collection, isPending]);
 
   if (meLoading || itemLoading) {
     return <div style={hintStyle}>Yükleniyor…</div>;
@@ -82,6 +198,8 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
   const canEdit = item?.canEdit ?? false;
   const disabled = isPending || !canEdit;
 
+  const hasDraft = item?.draftData != null;
+
   const save = () => {
     setError(null);
     const missing = requiredMissing(schema.fields, values);
@@ -105,8 +223,13 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
         );
         // Push freshly-saved item into the provider cache: all
         // subscribers (this editor, the page-side <CollectionItem>,
-        // any open Region tab) re-render without an extra GET.
-        updateCollectionItem(collection, slug, saved);
+        // any open Region tab) re-render without an extra GET. Force
+        // `draftData: null` since the backend cleared the draft and the
+        // upsert response may omit the field entirely.
+        updateCollectionItem(collection, slug, { ...saved, draftData: null });
+        // Drop the live-preview overlay so consumers fall back to the
+        // freshly-published `item.data` immediately.
+        clearCollectionDraft(collection, slug);
       } catch (err) {
         if (err instanceof CmsApiError && err.isConflict) {
           setError("Versiyon çakışması — liste yenilendi, kontrol edip tekrar dene.");
@@ -122,12 +245,26 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
     });
   };
 
+  // Revert local edits to the published baseline. We don't call the
+  // draft DELETE endpoint - resetting the form to `item.data` makes the
+  // autosave effect PUT the published payload back, and the backend
+  // auto-clears the draft slot when draft === published (mirrors the
+  // content-block discard flow). Clearing the live overlay
+  // synchronously means page-side consumers snap back to the published
+  // view before the autosave round-trip even fires.
+  const undoDraft = () => {
+    setError(null);
+    setValues(seedValues(schema.fields, item?.data ?? {}));
+    clearCollectionDraft(collection, slug);
+  };
+
   return (
     <div style={containerStyle}>
       {showMetaRow ? (
         <div style={metaRowStyle}>
           <span style={metaLabelStyle}>{collection}</span>
           <span style={metaSlugStyle}>{slug}</span>
+          {hasDraft ? <span style={draftBadgeStyle}>taslak</span> : null}
           <span style={metaVersionStyle}>
             {isVirtual ? "yeni" : `v${item.version}`}
           </span>
@@ -151,17 +288,39 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
       {error ? <div style={errorStyle}>{error}</div> : null}
 
       {canEdit ? (
-        <button
-          type="button"
-          onClick={save}
-          disabled={disabled}
-          style={saveButtonStyle}
-        >
-          {isPending ? "Kaydediliyor…" : "Kaydet"}
-        </button>
+        <div style={actionsRowStyle}>
+          <button
+            type="button"
+            onClick={save}
+            disabled={disabled}
+            style={saveButtonStyle}
+          >
+            {isPending ? "Kaydediliyor…" : "Kaydet"}
+          </button>
+          {hasDraft ? (
+            <button
+              type="button"
+              onClick={undoDraft}
+              disabled={disabled}
+              style={discardButtonStyle}
+              title="Form değerlerini yayındaki veriye geri çevir"
+            >
+              Geri al
+            </button>
+          ) : null}
+          <span style={draftStatusStyle(draftStatus)}>{draftStatusLabel(draftStatus)}</span>
+        </div>
       ) : null}
     </div>
   );
+}
+
+/** @param {"idle"|"saving"|"saved"|"failed"} status */
+function draftStatusLabel(status) {
+  if (status === "saving") return "Taslak kaydediliyor…";
+  if (status === "saved") return "Taslak kaydedildi";
+  if (status === "failed") return "Taslak kaydedilemedi";
+  return "";
 }
 
 // ---- Styles --------------------------------------------------------------
@@ -239,3 +398,46 @@ const saveButtonStyle = /** @type {React.CSSProperties} */ ({
   fontWeight: 600,
   fontFamily: "inherit",
 });
+
+const actionsRowStyle = /** @type {React.CSSProperties} */ ({
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+});
+
+const discardButtonStyle = /** @type {React.CSSProperties} */ ({
+  padding: "6px 10px",
+  background: "transparent",
+  color: TEXT_MUTED,
+  border: "1px solid rgba(255,255,255,0.15)",
+  borderRadius: 3,
+  cursor: "pointer",
+  fontSize: 11,
+  fontFamily: "inherit",
+});
+
+const draftBadgeStyle = /** @type {React.CSSProperties} */ ({
+  textTransform: "uppercase",
+  fontSize: 9,
+  letterSpacing: "0.06em",
+  padding: "1px 6px",
+  color: "rgb(190, 180, 230)",
+  background: "rgba(140, 130, 210, 0.12)",
+  border: "1px solid rgba(140, 130, 210, 0.35)",
+  borderRadius: 3,
+});
+
+/** @param {"idle"|"saving"|"saved"|"failed"} status */
+function draftStatusStyle(status) {
+  /** @type {React.CSSProperties} */
+  const base = {
+    marginLeft: "auto",
+    fontSize: 11,
+    fontFamily: "ui-monospace, 'SF Mono', monospace",
+    color: TEXT_MUTED,
+    minHeight: 14,
+  };
+  if (status === "saved") return { ...base, color: "rgb(150, 210, 160)" };
+  if (status === "failed") return { ...base, color: "#ff8b8b" };
+  return base;
+}

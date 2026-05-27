@@ -49,7 +49,7 @@ import { stableStringify } from "../lib/stable-stringify.js";
  * @returns {UseCollectionResult}
  */
 export function useCollection(key, params) {
-  const { collectionListCache, requestCollectionList } = useCmsContext();
+  const { collectionListCache, requestCollectionList, collectionDrafts } = useCmsContext();
 
   // Stabilise the params identity so consumers passing inline literals
   // (`{ filter: { featured: true } }`) don't re-trigger the effect on
@@ -67,8 +67,19 @@ export function useCollection(key, params) {
     await requestCollectionList(key, stableParams, true);
   }, [key, stableParams, requestCollectionList]);
 
+  // Live-edit overlay: page-side consumers should see the admin's
+  // in-progress edits the moment they're typed. Fall back to
+  // `item.draftData` (server-persisted draft) when there's no local
+  // overlay, then to published `item.data`. Always runs - even with an
+  // empty local map, rows may still carry `draftData` from the server
+  // and we want that promoted to `data` on first paint.
+  const items = useMemo(() => {
+    const raw = entry?.items ?? [];
+    return raw.map((row) => overlayItem(row, collectionDrafts, key));
+  }, [entry, collectionDrafts, key]);
+
   return {
-    items: entry?.items ?? [],
+    items,
     total: entry?.total ?? 0,
     offset: entry?.offset ?? params?.offset ?? 0,
     limit: entry?.limit ?? params?.limit ?? 0,
@@ -77,6 +88,28 @@ export function useCollection(key, params) {
     error: entry?.error ?? null,
     refetch,
   };
+}
+
+/**
+ * Apply the local draft overlay (if any) onto an item, then fall back
+ * to the server-persisted `draftData`, then to the published `data`.
+ * Returns the original reference when nothing changes so `useMemo` /
+ * downstream consumers don't see spurious identity churn.
+ *
+ * @param {CollectionItemResponse} row
+ * @param {Map<string, *>} drafts
+ * @param {string} key
+ * @returns {CollectionItemResponse}
+ */
+function overlayItem(row, drafts, key) {
+  const local = drafts.get(`${key}:${row.slug}`);
+  if (local !== undefined) {
+    return { ...row, data: local, draftData: local };
+  }
+  if (row.draftData != null) {
+    return { ...row, data: row.draftData };
+  }
+  return row;
 }
 
 /**
@@ -90,10 +123,18 @@ export function useCollection(key, params) {
 /**
  * @param {string} key   Backend collection key.
  * @param {string} slug  Item slug (lowercased server-side).
+ * @param {{ overlayDrafts?: boolean }} [options]
+ *   `overlayDrafts` defaults to true: page-side consumers see the
+ *   admin's live in-progress edits applied to `item.data`. The drawer
+ *   editor itself passes `false` so it always reads the raw server-side
+ *   item - otherwise the editor would consume its own overlay, the
+ *   seeding effect would re-fire on every keystroke, and the autosave
+ *   debounce timer would never finish counting down.
  * @returns {UseCollectionItemResult}
  */
-export function useCollectionItem(key, slug) {
-  const { collectionItemCache, requestCollectionItem } = useCmsContext();
+export function useCollectionItem(key, slug, options) {
+  const overlayDrafts = options?.overlayDrafts ?? true;
+  const { collectionItemCache, requestCollectionItem, collectionDrafts } = useCmsContext();
   const cacheKey = `${key}:${slug}`;
   const entry = collectionItemCache.get(cacheKey);
 
@@ -108,8 +149,17 @@ export function useCollectionItem(key, slug) {
     await requestCollectionItem(key, slug, true);
   }, [key, slug, requestCollectionItem]);
 
+  // Same overlay precedence as useCollection: local in-progress edits
+  // win, then the server-persisted draft, then the published value.
+  const item = entry?.item ?? null;
+  const overlaidItem = useMemo(() => {
+    if (!item) return null;
+    if (!overlayDrafts) return item;
+    return overlayItem(item, collectionDrafts, key);
+  }, [item, collectionDrafts, key, overlayDrafts]);
+
   return {
-    item: entry?.item ?? null,
+    item: overlaidItem,
     // No entry yet = fetch is about to fire; treat as loading so consumers
     // don't briefly render the "loaded but empty" branch.
     isLoading: entry ? entry.isLoading : true,

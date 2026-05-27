@@ -15,15 +15,22 @@
  * independently so the admin can paginate past the page's window.
  */
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, Plus } from "lucide-react";
 
 import { useCmsContext } from "../lib/context.js";
 import { useCollection } from "../hooks/use-collection.js";
 import { useMyCollections } from "../hooks/use-my-collections.js";
-import { createCollectionItem, CmsApiError } from "../lib/api-client.js";
+import {
+  createCollectionItem,
+  saveCollectionNewDraft,
+  CmsApiError,
+} from "../lib/api-client.js";
 import { stableStringify } from "../lib/stable-stringify.js";
+
+const DRAFT_DEBOUNCE_MS = 1000;
+const NEW_DRAFT_GUID = "00000000-0000-0000-0000-000000000000";
 
 import { AdminCollectionEditor } from "./AdminCollectionEditor.jsx";
 import {
@@ -276,10 +283,110 @@ function CreateForm({ collectionKey, schema }) {
   const [values, setValues] = useState(() => seedValues(schema.fields, {}));
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const [isPending, startTransition] = useTransition();
+  const [draftStatus, setDraftStatus] = useState(
+    /** @type {"idle"|"saving"|"saved"|"failed"} */ ("idle"),
+  );
+
+  // Unfiltered list peek — backend embeds the user's new-item draft as a
+  // virtual `id=Guid.Empty` entry on offset=0, filter-less GETs only.
+  // We don't render the list itself; we just need the draft snapshot so
+  // the form survives reloads. Shares the provider cache window with
+  // anything else that asks for the unfiltered first page.
+  const { items: unfiltered } = useCollection(collectionKey);
+  const draftEntry = useMemo(
+    () => unfiltered.find((row) => row.id === NEW_DRAFT_GUID) ?? null,
+    [unfiltered],
+  );
+  const draftData = draftEntry?.draftData ?? null;
+
+  const lastSyncedRef = useRef(/** @type {string | null} */ (null));
+  const draftStatusResetRef = useRef(
+    /** @type {ReturnType<typeof setTimeout>|null} */ (null),
+  );
+
+  // Seed the form from the backend draft once it arrives. We only do
+  // this when `draftData` flips from null → object so a successful
+  // publish (which clears the draft) doesn't immediately re-seed the
+  // emptied form against the user's just-submitted-and-cleared values.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (!draftData) return;
+    setValues(seedValues(schema.fields, draftData));
+    lastSyncedRef.current = stableStringify(draftData);
+    seededRef.current = true;
+    setIsOpen(true);
+  }, [draftData, schema.fields]);
+
+  useEffect(() => () => {
+    if (draftStatusResetRef.current) clearTimeout(draftStatusResetRef.current);
+  }, []);
+
+  /** @param {"saved"|"failed"} kind */
+  const flashDraftStatus = (kind) => {
+    setDraftStatus(kind);
+    if (draftStatusResetRef.current) clearTimeout(draftStatusResetRef.current);
+    draftStatusResetRef.current = setTimeout(() => {
+      setDraftStatus("idle");
+      draftStatusResetRef.current = null;
+    }, 900);
+  };
+
+  // Debounced new-item draft autosave. Same shape as the editor's: a
+  // 1s debounce on the serialised payload, skipped when nothing has
+  // changed since the last sync. The endpoint accepts partial data
+  // (required fields aren't enforced in draft mode), so we PUT exactly
+  // what the form holds.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    if (isPending) return undefined;
+    const payload = buildPayload(schema.fields, values);
+    const serialized = stableStringify(payload);
+    if (serialized === lastSyncedRef.current) return undefined;
+    // Don't fire an autosave for the initial empty form before the
+    // user has typed anything — there's nothing to draft yet.
+    if (lastSyncedRef.current === null && serialized === stableStringify(buildPayload(schema.fields, seedValues(schema.fields, {})))) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const token = await getAccessToken();
+        const init = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+        setDraftStatus("saving");
+        await saveCollectionNewDraft(config, collectionKey, { data: payload }, init);
+        if (cancelled) return;
+        lastSyncedRef.current = serialized;
+        flashDraftStatus("saved");
+      } catch (err) {
+        if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.warn("[skylab-cms] collection new-draft autosave failed:", err);
+        flashDraftStatus("failed");
+      }
+    }, DRAFT_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, isOpen, isPending, collectionKey]);
 
   const reset = () => {
     setValues(seedValues(schema.fields, {}));
     setError(null);
+    lastSyncedRef.current = null;
+    seededRef.current = false;
+  };
+
+  // Reset the form back to an empty seed. The autosave then PUTs an
+  // empty payload as the new draft; if every field is null/default the
+  // backend treats it as "no draft" and clears the slot. We don't hit
+  // a DELETE endpoint - mirrors the content-block discard flow.
+  const undoDraft = () => {
+    setError(null);
+    setValues(seedValues(schema.fields, {}));
   };
 
   const submit = () => {
@@ -326,6 +433,7 @@ function CreateForm({ collectionKey, schema }) {
       >
         <Plus size={14} />
         <span>Yeni {collectionKey.toLowerCase()} ekle</span>
+        {draftData ? <span style={draftBadgeStyle}>taslak</span> : null}
         <motion.span
           initial={false}
           animate={{ rotate: isOpen ? 180 : 0 }}
@@ -345,7 +453,7 @@ function CreateForm({ collectionKey, schema }) {
             disabled={isPending}
           />
           {error ? <div style={errorStyle}>{error}</div> : null}
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               type="button"
               onClick={submit}
@@ -354,6 +462,18 @@ function CreateForm({ collectionKey, schema }) {
             >
               {isPending ? "Oluşturuluyor…" : "Oluştur"}
             </button>
+            {draftData ? (
+              <button
+                type="button"
+                onClick={undoDraft}
+                disabled={isPending}
+                style={secondaryButtonStyle}
+                title="Form değerlerini sıfırla"
+              >
+                Geri al
+              </button>
+            ) : null}
+            <span style={draftStatusStyle(draftStatus)}>{draftStatusLabel(draftStatus)}</span>
             <button
               type="button"
               onClick={() => { setIsOpen(false); reset(); }}
@@ -367,6 +487,28 @@ function CreateForm({ collectionKey, schema }) {
       </div>
     </div>
   );
+}
+
+/** @param {"idle"|"saving"|"saved"|"failed"} status */
+function draftStatusLabel(status) {
+  if (status === "saving") return "Taslak kaydediliyor…";
+  if (status === "saved") return "Taslak kaydedildi";
+  if (status === "failed") return "Taslak kaydedilemedi";
+  return "";
+}
+
+/** @param {"idle"|"saving"|"saved"|"failed"} status */
+function draftStatusStyle(status) {
+  /** @type {React.CSSProperties} */
+  const base = {
+    fontSize: 11,
+    fontFamily: "ui-monospace, 'SF Mono', monospace",
+    color: TEXT_MUTED,
+    minHeight: 14,
+  };
+  if (status === "saved") return { ...base, color: "rgb(150, 210, 160)" };
+  if (status === "failed") return { ...base, color: "#ff8b8b" };
+  return base;
 }
 
 /** @param {Record<string, *> | undefined} filter */
@@ -448,6 +590,18 @@ const retryStyle = /** @type {React.CSSProperties} */ ({
   borderRadius: 3,
   cursor: "pointer",
   fontSize: 11,
+});
+
+const draftBadgeStyle = /** @type {React.CSSProperties} */ ({
+  textTransform: "uppercase",
+  fontSize: 9,
+  letterSpacing: "0.06em",
+  padding: "1px 6px",
+  color: "rgb(190, 180, 230)",
+  background: "rgba(140, 130, 210, 0.12)",
+  border: "1px solid rgba(140, 130, 210, 0.35)",
+  borderRadius: 3,
+  marginLeft: 6,
 });
 
 const createCardStyle = /** @type {React.CSSProperties} */ ({

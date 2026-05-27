@@ -97,6 +97,19 @@ import { createContext, useContext } from "react";
  *   `<CollectionItem>` re-renders with the new version instantly.
  * @property {(key: string, slug: string) => void} invalidateCollectionItem
  *   Drop the cache entry; the next consumer mount triggers a fresh fetch.
+ * @property {Map<string, *>} collectionDrafts
+ *   Per-(collection, slug) in-progress local edits from open drawer
+ *   editors. Key is `"{key}:{slug}"`, value is the full payload the
+ *   editor would publish right now. Mirrors the `drafts` map for
+ *   content blocks: `useCollectionItem` / `useCollection` overlay it
+ *   onto `item.data` so page-side `<CollectionItem>` / `<CollectionRegion>`
+ *   consumers see admin edits live while they're being typed - before
+ *   the debounced server-side draft autosave even fires. Cleared on
+ *   successful publish, on user-initiated "undo", and on pathname
+ *   change (so soft-nav doesn't leak stale overlays).
+ * @property {(key: string, slug: string, payload: *) => void} setCollectionDraft
+ * @property {(key: string, slug: string) => void} clearCollectionDraft
+ * @property {() => void} clearCollectionDrafts
  * @property {Map<string, CollectionListCacheEntry>} collectionListCache
  *   Shared cache for `useCollection(key, params?)`. Keyed by
  *   `"{key}|{stableStringify(params ?? {})}"` so different filter /

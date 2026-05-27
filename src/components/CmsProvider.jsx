@@ -175,6 +175,51 @@ export function CmsProvider({
     /** @type {Map<string, Promise<void>>} */ (new Map()),
   );
 
+  // Live-preview overlay for collection editors. Editor pushes the
+  // current form payload here on every keystroke (synchronously, before
+  // the debounced server-side autosave); page-side hooks read it back
+  // through `useCollectionItem` / `useCollection`. Mirrors the `drafts`
+  // map for content blocks - cleared on publish, undo, or pathname
+  // change so soft-nav doesn't leak stale overlays.
+  const [collectionDrafts, setCollectionDraftsState] = useState(
+    /** @returns {Map<string, *>} */ (() => new Map()),
+  );
+
+  const setCollectionDraft = useCallback(
+    /** @param {string} key @param {string} slug @param {*} payload */
+    (key, slug, payload) => {
+      const cacheKey = `${key}:${slug}`;
+      setCollectionDraftsState((prev) => {
+        const existing = prev.get(cacheKey);
+        if (existing !== undefined && stableStringify(existing) === stableStringify(payload)) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(cacheKey, payload);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clearCollectionDraft = useCallback(
+    /** @param {string} key @param {string} slug */
+    (key, slug) => {
+      const cacheKey = `${key}:${slug}`;
+      setCollectionDraftsState((prev) => {
+        if (!prev.has(cacheKey)) return prev;
+        const next = new Map(prev);
+        next.delete(cacheKey);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clearCollectionDrafts = useCallback(() => {
+    setCollectionDraftsState((prev) => (prev.size === 0 ? prev : new Map()));
+  }, []);
+
   // List cache for `useCollection(key)`. Keyed by collection key.
   const [collectionListCache, setCollectionListCache] = useState(
     /** @returns {Map<string, import("../lib/context.js").CollectionListCacheEntry>} */
@@ -289,6 +334,7 @@ export function CmsProvider({
     lastPathnameRef.current = pathname;
     setActiveBlock(null);
     setDraftsState(new Map());
+    setCollectionDraftsState(new Map());
     router.refresh();
   }, [pathname, router]);
 
@@ -763,6 +809,10 @@ export function CmsProvider({
       collectionListCache,
       requestCollectionList,
       invalidateCollectionList,
+      collectionDrafts,
+      setCollectionDraft,
+      clearCollectionDraft,
+      clearCollectionDrafts,
       onAfterSave: stableOnAfterSave,
       getAccessToken: stableGetAccessToken,
       draftSyncStatus,
@@ -799,6 +849,10 @@ export function CmsProvider({
       collectionListCache,
       requestCollectionList,
       invalidateCollectionList,
+      collectionDrafts,
+      setCollectionDraft,
+      clearCollectionDraft,
+      clearCollectionDrafts,
       stableOnAfterSave,
       stableGetAccessToken,
       draftSyncStatus,
