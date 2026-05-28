@@ -42,7 +42,7 @@ export function CollectionFieldsForm({ fields, values, onChange, disabled }) {
     return <div style={emptyHintStyle}>Schema boş.</div>;
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {fields.map((field) => (
         <FieldInput
           key={field.name}
@@ -65,20 +65,25 @@ export function CollectionFieldsForm({ fields, values, onChange, disabled }) {
  * }} props
  */
 function FieldInput({ field, value, onChange, disabled }) {
-  const labelText = `${field.label || field.name}${field.required ? " *" : ""}${
-    field.readOnly ? " (readonly)" : ""
-  }`;
+  const labelNode = (
+    <span style={labelRowStyle}>
+      <span style={labelTextStyle}>{field.label || field.name}</span>
+      {field.required ? <span style={requiredMarkStyle} aria-label="zorunlu">*</span> : null}
+      {field.readOnly ? <span style={readonlyTagStyle}>readonly</span> : null}
+    </span>
+  );
 
   // `options` wins over `type` - any field with a known enumeration gets
   // a select even if its underlying type would otherwise be text.
   if (field.options && field.options.length > 0) {
     return (
       <label style={labelStyle}>
-        {labelText}
+        {labelNode}
         <select
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
+          className="skylab-cms-field"
           style={inputStyle}
         >
           <option value="">— seç —</option>
@@ -94,22 +99,23 @@ function FieldInput({ field, value, onChange, disabled }) {
   switch (field.type) {
     case "Bool":
       return (
-        <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <label style={checkboxLabelStyle}>
           <input
             type="checkbox"
             checked={Boolean(value)}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}
+            style={checkboxStyle}
           />
-          <span>{labelText}</span>
+          {labelNode}
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
         </label>
       );
 
-    case "Number":
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "Number":
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <input
             type="number"
             value={value ?? ""}
@@ -117,47 +123,50 @@ function FieldInput({ field, value, onChange, disabled }) {
               onChange(e.target.value === "" ? null : Number(e.target.value))
             }
             disabled={disabled}
+            className="skylab-cms-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
         </label>
       );
 
-    case "Date":
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "Date":
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <input
             type="datetime-local"
             value={toDatetimeLocal(value)}
             onChange={(e) => onChange(fromDatetimeLocal(e.target.value))}
             disabled={disabled}
+            className="skylab-cms-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
         </label>
       );
 
-    case "Url":
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "Url":
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <input
             type="url"
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             placeholder="https://…"
+            className="skylab-cms-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
         </label>
       );
 
-    case "StringArray":
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "StringArray":
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <textarea
             value={(Array.isArray(value) ? value : []).join("\n")}
             onChange={(e) =>
@@ -171,37 +180,40 @@ function FieldInput({ field, value, onChange, disabled }) {
             disabled={disabled}
             rows={3}
             placeholder="Her satır bir öğe"
+            className="skylab-cms-field"
             style={textareaStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
         </label>
       );
 
-    case "RichText":
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "RichText":
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <textarea
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             rows={6}
+            className="skylab-cms-field"
             style={textareaStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help} (HTML kabul edilir)</span> : null}
         </label>
       );
 
-    case "Text":
-    default:
-      return (
-        <label style={labelStyle}>
-          {labelText}
+      case "Text":
+      default:
+        return (
+          <label style={labelStyle}>
+            {labelNode}
           <input
             type="text"
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
+            className="skylab-cms-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
@@ -310,8 +322,64 @@ function fromDatetimeLocal(local) {
 
 // ---- Styles ---------------------------------------------------------------
 
-const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "inherit" };
-const helpStyle = { color: "currentColor", opacity: 0.6, fontSize: 11 };
-const inputStyle = { padding: "6px 8px", border: "1px solid rgba(127,127,127,0.35)", borderRadius: 3, fontSize: 13, fontFamily: "inherit", background: "transparent", color: "inherit" };
-const textareaStyle = { ...inputStyle, fontFamily: "ui-monospace, monospace", fontSize: 12, resize: "vertical" };
+const labelStyle = { display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "inherit" };
+const labelRowStyle = { display: "inline-flex", alignItems: "baseline", gap: 6 };
+const labelTextStyle = {
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.01em",
+  textTransform: "uppercase",
+  opacity: 0.65,
+};
+const requiredMarkStyle = {
+  color: "rgb(220, 195, 225)",
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1,
+};
+const readonlyTagStyle = {
+  fontSize: 9,
+  fontWeight: 600,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  padding: "1px 6px",
+  borderRadius: 3,
+  background: "rgba(127,127,127,0.10)",
+  opacity: 0.6,
+};
+const helpStyle = { color: "currentColor", opacity: 0.5, fontSize: 11, lineHeight: 1.45 };
+const inputStyle = {
+  padding: "8px 10px",
+  border: "1px solid rgba(127,127,127,0.22)",
+  borderRadius: 6,
+  fontSize: 13,
+  lineHeight: 1.4,
+  fontFamily: "inherit",
+  background: "rgba(127,127,127,0.04)",
+  color: "inherit",
+  outline: "none",
+};
+const textareaStyle = {
+  ...inputStyle,
+  fontFamily: "ui-monospace, 'SF Mono', monospace",
+  fontSize: 12,
+  lineHeight: 1.5,
+  resize: "vertical",
+  minHeight: 72,
+};
+const checkboxLabelStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12,
+  color: "inherit",
+  padding: "2px 0",
+};
+const checkboxStyle = {
+  width: 14,
+  height: 14,
+  margin: 0,
+  accentColor: "rgb(220, 195, 225)",
+  cursor: "pointer",
+};
 const emptyHintStyle = { color: "currentColor", opacity: 0.6, fontSize: 13 };

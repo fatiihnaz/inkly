@@ -7,7 +7,7 @@
  * Single-item reads (`useCollectionItem`) route through a provider-level
  * cache: two consumers mounted simultaneously for the same `(key, slug)`
  * share one round-trip, and a successful save through
- * `AdminCollectionItemCard` updates the cache directly so the page-side
+ * `AdminCollectionEditor` updates the cache directly so the page-side
  * preview re-renders without a fetch. List reads (`useCollection`) still
  * fetch per consumer for now - list caching can land alongside
  * Region-tab work.

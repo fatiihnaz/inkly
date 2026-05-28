@@ -84,7 +84,7 @@ import { createContext, useContext } from "react";
  * @property {Map<string, CollectionItemCacheEntry>} collectionItemCache
  *   Shared cache for `useCollectionItem`. Key is `"{key}:{slug}"`. Both
  *   the page-side `<CollectionItem>` and the drawer-side
- *   `AdminCollectionItemCard` read from this map, so a save in the drawer
+ *   `AdminCollectionEditor` read from this map, so a save in the drawer
  *   propagates to the page without a second fetch (and two surfaces
  *   mounted at once for the same item only fire one request).
  * @property {(key: string, slug: string, force?: boolean) => Promise<void>} requestCollectionItem

@@ -884,7 +884,7 @@ export function CmsProvider({
       <div
         style={{
           marginLeft: contentOffset,
-          transition: "margin-left 350ms cubic-bezier(0.32, 0.72, 0, 1)",
+          transition: "margin-left 350ms cubic-bezier(0.32, 0.72, 0.18, 1)",
         }}
       >
         {children}
@@ -897,7 +897,7 @@ export function CmsProvider({
 // Must match PANEL_WIDTH inside AdminDrawer.jsx. Hardcoded here (rather than
 // imported) so the constant stays out of the public bundle - AdminDrawer is
 // dynamically imported and only loads for admins.
-const ADMIN_PANEL_WIDTH = 440;
+const ADMIN_PANEL_WIDTH = 460;
 
 // Public visitors render entirely from `initialBlocks` (server-fetched and
 // ISR-cached under `cmsCacheTag(slug)`); the cache is dropped on admin save

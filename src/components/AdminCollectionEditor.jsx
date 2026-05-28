@@ -4,13 +4,20 @@
  * @file `AdminCollectionEditor` - schema-driven form + direct-PUT save for
  * a single collection row. Shared between two drawer surfaces:
  *
- *   - `AdminCollectionItemCard` renders it inside Page-tab Collection
- *     cards (one per `<CollectionItem>` binding rendered on the page).
- *   - `AdminCollectionRegionPanel` renders it inside Region-tab item
- *     cards (one per row returned by `useCollection(key)`).
+ *   - Page-tab Collection cards (one per `<CollectionItem>` binding
+ *     rendered on the page; the card wrapper lives in `AdminBlockCard`)
+ *   - Region-tab item cards (one per row returned by
+ *     `useCollection(key)`; rendered inside `AdminCollectionRegionPanel`)
  *
- * The hook lookup is identical in both cases: read schema from the
- * provider's /me cache, the item value from the shared item cache. Save
+ * State lives in the `useCollectionEditor(collection, slug)` hook so the
+ * surrounding card wrapper can render the per-card "Geri al" button up in
+ * the card header (next to the chevron) alongside its `hasDraft` /
+ * `undoDraft` exposure. The component itself is presentational: it
+ * accepts the hook's return value via `editor` and renders the meta row
+ * + form + save button.
+ *
+ * The hook lookup is identical for both surfaces: schema from the
+ * provider's /me cache, item value from the shared item cache. Save
  * goes through `upsertCollectionItem` and the response is pushed back
  * into the cache via `updateCollectionItem` so the page-side preview
  * and any other open surfaces re-render with the new version.
@@ -35,18 +42,45 @@ import {
   buildPayload,
   requiredMissing,
 } from "./editors/CollectionFieldsForm.jsx";
-import { TEXT_MUTED, ACCENT } from "./admin-drawer-styles.js";
+import { TEXT_MUTED, COLLECTION_ACCENT } from "./admin-drawer-styles.js";
 
 const DRAFT_DEBOUNCE_MS = 1000;
 
 /**
- * @param {{
- *   collection: string,
- *   slug: string,
- *   showMetaRow?: boolean,
- * }} props
+ * @typedef {Object} CollectionEditorState
+ * @property {import("../lib/schemas.js").CollectionSchema | null} schema
+ * @property {string | null} slugSource
+ * @property {import("../lib/schemas.js").CollectionItemResponse | null} item
+ * @property {Record<string, *> | null} values
+ * @property {(next: Record<string, *>) => void} setValues
+ * @property {() => void} save
+ * @property {() => void} undoDraft
+ * @property {boolean} hasDraft
+ * @property {boolean} canEdit
+ * @property {boolean} isVirtual
+ * @property {boolean} isPending
+ * @property {string | null} error
+ * @property {"idle"|"saving"|"saved"|"failed"} draftStatus
+ * @property {boolean} meLoading
+ * @property {Error | null} meError
+ * @property {boolean} itemLoading
+ * @property {Error | null} itemError
+ * @property {() => Promise<void>} refetch
+ * @property {string} collection
+ * @property {string} slug
  */
-export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) {
+
+/**
+ * State + handlers for a single collection row editor. Lifted out of the
+ * component so the surrounding card can render header-level controls
+ * (e.g. the "Geri al" reset button) that drive the same state as the
+ * inline form below.
+ *
+ * @param {string} collection
+ * @param {string} slug
+ * @returns {CollectionEditorState}
+ */
+export function useCollectionEditor(collection, slug) {
   const {
     config,
     getAccessToken,
@@ -75,11 +109,10 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
     /** @type {"idle"|"saving"|"saved"|"failed"} */ ("idle"),
   );
 
-  // The serialized payload last seen as authoritative — either what the
-  // server returned (data or draftData) or what we just successfully
-  // PUT'd as a draft. Used to avoid re-sending the same payload twice
-  // (initial mount, cache refresh round-trips) and to detect when a
-  // local edit produces nothing actually changed.
+  // Last payload either returned by the server (data or draftData) or
+  // successfully PUT'd as a draft. Used to avoid resending the same
+  // payload twice (initial mount, cache refresh round-trips) and to
+  // detect when a local edit produces nothing actually changed.
   const lastSyncedRef = useRef(/** @type {string | null} */ (null));
   const draftStatusResetRef = useRef(
     /** @type {ReturnType<typeof setTimeout>|null} */ (null),
@@ -111,14 +144,15 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
     }, 900);
   };
 
-  // Debounced draft autosave. Every change to the local `values` resets
-  // a 1s timer; when it fires we PUT the current payload to the matching
+  // Debounced draft autosave. Every change to `values` resets a 1s
+  // timer; when it fires we PUT the current payload to the matching
   // draft endpoint (item draft for published rows, new-item draft for
   // virtual / version=0 rows). The backend Redis store has a 7-day TTL
   // and a successful publish auto-clears the item-draft slot, so this
-  // effect is purely write-side: no GET coordination needed. Reseed
-  // useEffect above resyncs `lastSyncedRef` after the cache picks up a
-  // publish, preventing an autosave loop against the just-saved value.
+  // effect is purely write-side: no GET coordination needed. The
+  // seeding effect above resyncs `lastSyncedRef` after the cache picks
+  // up a publish, preventing an autosave loop against the just-saved
+  // value.
   useEffect(() => {
     if (!schema || !values) return undefined;
     if (!item?.canEdit) return undefined;
@@ -174,34 +208,13 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, item, schema, slugSource, slug, collection, isPending]);
 
-  if (meLoading || itemLoading) {
-    return <div style={hintStyle}>Yükleniyor…</div>;
-  }
-  if (meError) {
-    return <div style={errorStyle}>Erişim listesi alınamadı: {meError.message}</div>;
-  }
-  if (itemError && !(itemError instanceof CmsApiError && itemError.isNotFound)) {
-    return <div style={errorStyle}>{collection}/{slug} alınamadı: {itemError.message}</div>;
-  }
-  if (!schema) {
-    return (
-      <div style={hintStyle}>
-        <code>{collection}</code> collection'ına bu oturumda erişimin yok — düzenleyemezsin.
-      </div>
-    );
-  }
-  if (!values) {
-    return null;
-  }
-
   const isVirtual = !item || item.version === 0;
   const canEdit = item?.canEdit ?? false;
-  const disabled = isPending || !canEdit;
-
   const hasDraft = item?.draftData != null;
 
   const save = () => {
     setError(null);
+    if (!schema || !values) return;
     const missing = requiredMissing(schema.fields, values);
     if (missing) {
       setError(`Zorunlu alan eksik: ${missing}`);
@@ -253,10 +266,77 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
   // synchronously means page-side consumers snap back to the published
   // view before the autosave round-trip even fires.
   const undoDraft = () => {
+    if (!schema) return;
     setError(null);
     setValues(seedValues(schema.fields, item?.data ?? {}));
     clearCollectionDraft(collection, slug);
   };
+
+  return {
+    schema,
+    slugSource,
+    item,
+    values,
+    setValues,
+    save,
+    undoDraft,
+    hasDraft,
+    canEdit,
+    isVirtual,
+    isPending,
+    error,
+    draftStatus,
+    meLoading,
+    meError: /** @type {Error | null} */ (meError ?? null),
+    itemLoading,
+    itemError: /** @type {Error | null} */ (itemError ?? null),
+    refetch,
+    collection,
+    slug,
+  };
+}
+
+/**
+ * Presentational editor body. The `editor` prop carries all state +
+ * handlers from `useCollectionEditor`; the parent card wrapper drives
+ * the hook so it can also render header-level controls (the per-card
+ * "Geri al" button next to the chevron) against the same state.
+ *
+ * @param {{
+ *   editor: CollectionEditorState,
+ *   showMetaRow?: boolean,
+ * }} props
+ */
+export function AdminCollectionEditor({ editor, showMetaRow = true }) {
+  const {
+    collection, slug,
+    schema, item, values, setValues,
+    save, hasDraft, canEdit, isVirtual,
+    isPending, error, draftStatus,
+    meLoading, meError, itemLoading, itemError,
+  } = editor;
+
+  if (meLoading || itemLoading) {
+    return <div style={hintStyle}>Yükleniyor…</div>;
+  }
+  if (meError) {
+    return <div style={errorStyle}>Erişim listesi alınamadı: {meError.message}</div>;
+  }
+  if (itemError && !(itemError instanceof CmsApiError && itemError.isNotFound)) {
+    return <div style={errorStyle}>{collection}/{slug} alınamadı: {itemError.message}</div>;
+  }
+  if (!schema) {
+    return (
+      <div style={hintStyle}>
+        <code>{collection}</code> collection'ına bu oturumda erişimin yok — düzenleyemezsin.
+      </div>
+    );
+  }
+  if (!values) {
+    return null;
+  }
+
+  const disabled = isPending || !canEdit;
 
   return (
     <div style={containerStyle}>
@@ -297,17 +377,6 @@ export function AdminCollectionEditor({ collection, slug, showMetaRow = true }) 
           >
             {isPending ? "Kaydediliyor…" : "Kaydet"}
           </button>
-          {hasDraft ? (
-            <button
-              type="button"
-              onClick={undoDraft}
-              disabled={disabled}
-              style={discardButtonStyle}
-              title="Form değerlerini yayındaki veriye geri çevir"
-            >
-              Geri al
-            </button>
-          ) : null}
           <span style={draftStatusStyle(draftStatus)}>{draftStatusLabel(draftStatus)}</span>
         </div>
       ) : null}
@@ -341,7 +410,7 @@ const metaRowStyle = /** @type {React.CSSProperties} */ ({
 });
 
 const metaLabelStyle = /** @type {React.CSSProperties} */ ({
-  color: ACCENT,
+  color: COLLECTION_ACCENT,
   textTransform: "uppercase",
 });
 
@@ -388,11 +457,11 @@ const errorStyle = /** @type {React.CSSProperties} */ ({
 
 const saveButtonStyle = /** @type {React.CSSProperties} */ ({
   alignSelf: "flex-start",
-  padding: "6px 14px",
-  background: ACCENT,
+  padding: "7px 14px",
+  background: COLLECTION_ACCENT,
   color: "#221d18",
   border: "none",
-  borderRadius: 3,
+  borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 600,
@@ -405,26 +474,15 @@ const actionsRowStyle = /** @type {React.CSSProperties} */ ({
   gap: 8,
 });
 
-const discardButtonStyle = /** @type {React.CSSProperties} */ ({
-  padding: "6px 10px",
-  background: "transparent",
-  color: TEXT_MUTED,
-  border: "1px solid rgba(255,255,255,0.15)",
-  borderRadius: 3,
-  cursor: "pointer",
-  fontSize: 11,
-  fontFamily: "inherit",
-});
-
 const draftBadgeStyle = /** @type {React.CSSProperties} */ ({
   textTransform: "uppercase",
   fontSize: 9,
   letterSpacing: "0.06em",
   padding: "1px 6px",
-  color: "rgb(190, 180, 230)",
-  background: "rgba(140, 130, 210, 0.12)",
-  border: "1px solid rgba(140, 130, 210, 0.35)",
-  borderRadius: 3,
+  color: COLLECTION_ACCENT,
+  background: "rgba(220, 195, 225, 0.10)",
+  border: "1px solid rgba(220, 195, 225, 0.30)",
+  borderRadius: 4,
 });
 
 /** @param {"idle"|"saving"|"saved"|"failed"} status */
