@@ -36,7 +36,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
   ChevronsLeft, ChevronDown, ChevronLeft, ChevronRight,
-  Check, Undo2, LogOut, Search,
+  Check, Undo2, LogOut, Search, Eye, Pencil,
 } from "lucide-react";
 
 import { useCmsContext } from "../lib/context.js";
@@ -47,14 +47,21 @@ import { stableStringify } from "../lib/stable-stringify.js";
 
 import { BlockCard, resetBlock } from "./AdminBlockCard.jsx";
 import { AdminCollectionRegionPanel } from "./AdminCollectionRegionPanel.jsx";
+import { AdminChangesPanel } from "./AdminChangesPanel.jsx";
 
 import {
   PANEL_WIDTH,
   PANEL_TRANSITION,
   ACCENT,
   COLLECTION_ACCENT,
+  TEXT,
+  TEXT_MID,
   TEXT_MUTED,
   TEXT_FAINT,
+  HAIRLINE,
+  SURFACE_2,
+  FONT_SANS,
+  FONT_MONO,
   STATUS_OK,
   STATUS_WARN,
   STATUS_DANGER,
@@ -235,6 +242,22 @@ export function AdminDrawer() {
   const pageDirty = pageBlockList.some((b) => dirtyByPath.get(b.blockPath));
   const globalDirty = globalBlockList.some((b) => dirtyByPath.get(b.blockPath));
 
+  // Diff-able dirty count for the StatusBar's "Önizle" toggle: page +
+  // global, excluding Collection synth blocks (their dirty state is
+  // per-item and surfaces inside the collection's own region tab, not
+  // through the block-level preview).
+  const previewableCount = useMemo(() => {
+    let n = 0;
+    for (const b of pageBlockList) {
+      if (b.blockType === "Collection") continue;
+      if (dirtyByPath.get(b.blockPath)) n++;
+    }
+    for (const b of globalBlockList) {
+      if (dirtyByPath.get(b.blockPath)) n++;
+    }
+    return n;
+  }, [pageBlockList, globalBlockList, dirtyByPath]);
+
   const allTabs = useMemo(
     () => [
       { id: "page", label: "Sayfa", count: pageBlockList.length, dirty: pageDirty },
@@ -247,14 +270,28 @@ export function AdminDrawer() {
     [pageBlockList.length, globalBlockList.length, regionTabs, pageDirty, globalDirty, collectionDirtyByKey],
   );
 
-  const [activeTab, setActiveTab] = useState(/** @type {string} */ ("page"));
+  const [activeTab, setActiveTabState] = useState(/** @type {string} */ ("page"));
+  // Preview overlay: when on, the body slot renders `AdminChangesPanel`
+  // instead of the active tab's content. Toggled by the StatusBar's
+  // Önizle / Düzenle button. Auto-closes when there's nothing left to
+  // preview (dirty drains to 0) or when the user clicks a different tab.
+  const [isPreviewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (isPreviewOpen && previewableCount === 0) setPreviewOpen(false);
+  }, [isPreviewOpen, previewableCount]);
+  /** @param {string} tab */
+  const setActiveTab = (tab) => {
+    if (isPreviewOpen) setPreviewOpen(false);
+    setActiveTabState(tab);
+  };
 
   // If the active tab disappears (e.g. navigating away from a page that
   // had a Region binding), fall back to "page" so the user isn't stuck
-  // staring at a blank pane.
+  // staring at a blank pane. Use the raw setter so an open preview isn't
+  // collateral-damaged by a routing event the user didn't initiate.
   useEffect(() => {
     if (allTabs.some((t) => t.id === activeTab)) return;
-    setActiveTab("page");
+    setActiveTabState("page");
   }, [allTabs, activeTab]);
 
   // Per-group collapse state. Storing the *closed* set (not open) means new
@@ -345,13 +382,33 @@ export function AdminDrawer() {
         <div style={paneContainerStyle}>
           <PanelHeader breadcrumbs={breadcrumbs} dirty={dirtyCount > 0} />
 
-          <TabBar
-            tabs={allTabs}
-            activeTab={activeTab}
-            onChange={setActiveTab}
-          />
+          {isPreviewOpen ? (
+            <PreviewHeader
+              count={previewableCount}
+              onBack={() => setPreviewOpen(false)}
+            />
+          ) : (
+            <TabBar
+              tabs={allTabs}
+              activeTab={activeTab}
+              onChange={setActiveTab}
+            />
+          )}
 
-          {(activeTab === "page" || activeTab === "global") ? (
+          {isPreviewOpen ? (
+            <AdminChangesPanel
+              blockList={[...pageBlockList, ...globalBlockList]}
+              drafts={drafts}
+              dirtyByPath={dirtyByPath}
+              itemSchemas={itemSchemas}
+              onGoToBlock={(block) => {
+                setPreviewOpen(false);
+                const scope = (block._slug ?? pathname) === pathname ? "page" : "global";
+                setActiveTabState(scope);
+                setActiveBlock(block.blockPath);
+              }}
+            />
+          ) : (activeTab === "page" || activeTab === "global") ? (
             <>
               <Toolbar value={search} onChange={setSearch} />
               <GroupedBlockList
@@ -397,6 +454,9 @@ export function AdminDrawer() {
             lastSavedAt={lastSavedAt}
             onDiscardAll={onDiscardAll}
             onSaveAll={onSaveAll}
+            previewableCount={previewableCount}
+            isPreviewOpen={isPreviewOpen}
+            onTogglePreview={() => setPreviewOpen((v) => !v)}
           />
 
           {userInfo ? (
@@ -854,6 +914,80 @@ function chunkBlocksByPrefix(blocks) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Replaces the tab bar while the preview overlay is open. Mirrors the
+ * tab bar's height + border so the body content doesn't reflow on the
+ * swap; left chip is the "go back" affordance, right chip is a passive
+ * label + count badge confirming what the body is showing.
+ *
+ * @param {{ count: number, onBack: () => void }} props
+ */
+function PreviewHeader({ count, onBack }) {
+  return (
+    <div style={previewHeaderStyle}>
+      <button
+        type="button"
+        onClick={onBack}
+        className="skylab-cms-preview-back"
+        style={previewBackStyle}
+        aria-label="Düzenlemeye dön"
+      >
+        <ChevronLeft size={12} />
+        <span>Düzenle</span>
+      </button>
+      <div style={previewTitleStyle}>
+        <span>Değişiklikler</span>
+        <span style={previewCountStyle}>{count}</span>
+      </div>
+    </div>
+  );
+}
+
+// Match TabBar's child rhythm exactly: the bar has no vertical padding,
+// and the back button + title each carry the same 10px top/bottom
+// padding tab buttons use (`tabButtonStyle` in `admin-drawer-styles.js`).
+// Net height = 10 + 12px text/icon + 10 + 1px border ≈ 33px on both
+// surfaces, so swapping between them doesn't reflow the body slot.
+const previewHeaderStyle = /** @type {React.CSSProperties} */ ({
+  display: "flex",
+  alignItems: "stretch",
+  justifyContent: "space-between",
+  padding: "0 16px",
+  borderBottom: `1px solid ${HAIRLINE}`,
+});
+
+const previewBackStyle = /** @type {React.CSSProperties} */ ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  background: "transparent",
+  border: 0,
+  padding: "10px 8px",
+  marginLeft: -8,
+  color: TEXT,
+  font: `500 12px/1 ${FONT_SANS}`,
+  cursor: "pointer",
+  fontFamily: "inherit",
+});
+
+const previewTitleStyle = /** @type {React.CSSProperties} */ ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  color: TEXT_MUTED,
+  font: `500 10px/1 ${FONT_MONO}`,
+  letterSpacing: "0.10em",
+  textTransform: "uppercase",
+});
+
+const previewCountStyle = /** @type {React.CSSProperties} */ ({
+  font: `500 10px/1 ${FONT_MONO}`,
+  padding: "3px 6px",
+  borderRadius: 99,
+  background: SURFACE_2,
+  color: TEXT_MID,
+});
+
+/**
  * @param {{
  *   dirtyCount: number,
  *   isSaving: boolean,
@@ -861,9 +995,16 @@ function chunkBlocksByPrefix(blocks) {
  *   lastSavedAt: string | null,
  *   onDiscardAll: () => void,
  *   onSaveAll: () => void,
+ *   previewableCount: number,
+ *   isPreviewOpen: boolean,
+ *   onTogglePreview: () => void,
  * }} props
  */
-function StatusBar({ dirtyCount, isSaving, draftSyncStatus, lastSavedAt, onDiscardAll, onSaveAll }) {
+function StatusBar({
+  dirtyCount, isSaving, draftSyncStatus, lastSavedAt,
+  onDiscardAll, onSaveAll,
+  previewableCount, isPreviewOpen, onTogglePreview,
+}) {
   const isDirty = dirtyCount > 0;
   const isSyncing = draftSyncStatus === "saving" || isSaving;
   const isFailed  = draftSyncStatus === "failed";
@@ -916,6 +1057,20 @@ function StatusBar({ dirtyCount, isSaving, draftSyncStatus, lastSavedAt, onDisca
       </div>
       {isDirty ? (
         <div style={statusActionsStyle}>
+          {previewableCount > 0 ? (
+            <button
+              type="button"
+              onClick={onTogglePreview}
+              className="skylab-cms-btn-ghost"
+              style={btnGhostStyle}
+              aria-label={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
+              title={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
+              aria-pressed={isPreviewOpen}
+            >
+              {isPreviewOpen ? <Pencil size={13} /> : <Eye size={13} />}
+              <span>{isPreviewOpen ? "Düzenle" : "Önizle"}</span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onDiscardAll}
