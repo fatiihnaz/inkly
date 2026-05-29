@@ -50,8 +50,22 @@ import { createContext, useContext } from "react";
  * @property {(blockPath: string, value: *) => void} setDraft
  * @property {(blockPath: string) => void} clearDraft
  * @property {() => void} clearDrafts
+ * @property {(blockPaths: string[]) => void} discardServerDrafts
+ *   Silent cleanup of server-side draft slots for the given block paths.
+ *   Optimistically nulls `draftValue` on those blocks in the local map
+ *   (dirty count drops to 0 immediately) and fires per-slug cleanup PUTs
+ *   in the background without touching `draftSyncStatus`. Used by the
+ *   discard flow so the header pill / status bar don't flash a save
+ *   pulse for a request that conceptually removes a draft.
  * @property {string|null} activeBlock
  * @property {(blockPath: string|null) => void} setActiveBlock
+ * @property {{ key: string, slug: string } | null} activeCollectionItem
+ *   Drawer-side "open this row" signal consumed by `RegionItemCard`.
+ *   When the StatusBar's "Aç" CTA targets a specific collection item, this
+ *   is set alongside switching the active tab; the matching card reads it
+ *   on render and auto-expands. The card clears the signal after honouring
+ *   it so re-visiting the same tab later doesn't re-open the row.
+ * @property {(target: { key: string, slug: string } | null) => void} setActiveCollectionItem
  * @property {number} refetchToken      Bumped to force `useCmsContent` to refetch.
  * @property {() => void} triggerRefetch
  * @property {Map<string, ItemSchema>} itemSchemas

@@ -77,8 +77,6 @@ import {
   breadcrumbInactiveStyle,
   titleBarStyle,
   pageTitleStyle,
-  modeChipStyle,
-  modeChipDirtyStyle,
   tabBarStyle,
   tabBarScrollStyle,
   tabBarChevronStyle,
@@ -106,7 +104,6 @@ import {
   statusMsgStyle,
   statusMsgCleanStyle,
   statusMsgEmphasisStyle,
-  statusTsStyle,
   statusActionsStyle,
   btnPrimaryStyle,
   btnGhostStyle,
@@ -133,6 +130,8 @@ export function AdminDrawer() {
   const {
     activeBlock,
     setActiveBlock,
+    activeCollectionItem,
+    setActiveCollectionItem,
     blocks,
     drafts,
     setDraft,
@@ -142,6 +141,7 @@ export function AdminDrawer() {
     itemSchemas,
     collectionBindings,
     collectionListCache,
+    collectionItemCache,
     collectionDrafts,
     userInfo,
     onSignOut,
@@ -213,22 +213,32 @@ export function AdminDrawer() {
     const out = [];
     for (const my of myCollections) {
       if (!pageRegions.has(my.collectionKey)) continue;
-      const cached = collectionListCache.get(my.collectionKey);
+      // List cache keys are `"{key}|{stableStringify(params)}"`, so a
+      // direct `.get(collectionKey)` misses every entry. Scan by prefix
+      // and take the largest `total` we find — that's the unfiltered
+      // size when the user has opened the Region tab; falls back to a
+      // filtered window's reported total otherwise.
+      const listPrefix = `${my.collectionKey}|`;
+      let total = 0;
+      for (const [k, entry] of collectionListCache) {
+        if (k.startsWith(listPrefix)) total = Math.max(total, entry.total);
+      }
       out.push({
         id: `collection:${my.collectionKey}`,
         label: my.collectionKey,
-        count: cached?.items.length ?? 0,
+        count: total,
         key: my.collectionKey,
       });
     }
     return out;
   }, [collectionBindings, myCollections, collectionListCache]);
 
-  // Per-collection-key dirty flag: any entry in `collectionDrafts` whose
-  // composite key (`"{key}:{slug}"`) starts with this collection's key
-  // counts as dirty. Covers the live local overlay; server-side drafts
-  // (item.draftData) are surfaced per-card by `useCollectionEditor` but
-  // not aggregated here — keeping the tab dot driven by visible state.
+  // Per-collection-key dirty flag for the tab dot. Unions both the live
+  // overlay map (in-progress local edits) and the cached items with a
+  // server-persisted `draftData`. The overlay alone misses everything
+  // after the autosave debounce fires (the editor clears the overlay
+  // once the cache picks up `draftData`), so without the cache pass the
+  // dot would flash on briefly while the user types and then disappear.
   const collectionDirtyByKey = useMemo(() => {
     /** @type {Set<string>} */
     const set = new Set();
@@ -236,8 +246,13 @@ export function AdminDrawer() {
       const i = draftKey.indexOf(":");
       if (i > 0) set.add(draftKey.slice(0, i));
     }
+    for (const [cacheKey, entry] of collectionItemCache) {
+      if (!entry.item || entry.item.draftData == null) continue;
+      const i = cacheKey.indexOf(":");
+      if (i > 0) set.add(cacheKey.slice(0, i));
+    }
     return set;
-  }, [collectionDrafts]);
+  }, [collectionDrafts, collectionItemCache]);
 
   const pageDirty = pageBlockList.some((b) => dirtyByPath.get(b.blockPath));
   const globalDirty = globalBlockList.some((b) => dirtyByPath.get(b.blockPath));
@@ -258,6 +273,57 @@ export function AdminDrawer() {
     return n;
   }, [pageBlockList, globalBlockList, dirtyByPath]);
 
+  // Per-collection dirty item slug sets, unioned across both the live
+  // overlay map (in-progress local edits) and the cached items with a
+  // server-persisted draft. Used by the preview overlay's collection
+  // summary banner so admins see at-a-glance whether any collection
+  // tab has pending work before publishing. Items not yet loaded into
+  // the item cache stay invisible — acceptable since the user hasn't
+  // even opened those collections this session.
+  const collectionDirtyCounts = useMemo(() => {
+    /** @type {Map<string, Set<string>>} */
+    const out = new Map();
+    /** @param {string} key @param {string} slug */
+    const add = (key, slug) => {
+      let set = out.get(key);
+      if (!set) { set = new Set(); out.set(key, set); }
+      set.add(slug);
+    };
+    for (const draftKey of collectionDrafts.keys()) {
+      const i = draftKey.indexOf(":");
+      if (i <= 0) continue;
+      add(draftKey.slice(0, i), draftKey.slice(i + 1));
+    }
+    for (const [cacheKey, entry] of collectionItemCache) {
+      if (!entry.item || entry.item.draftData == null) continue;
+      const i = cacheKey.indexOf(":");
+      if (i <= 0) continue;
+      add(cacheKey.slice(0, i), cacheKey.slice(i + 1));
+    }
+    return out;
+  }, [collectionDrafts, collectionItemCache]);
+
+  const collectionDirtyTotal = useMemo(() => {
+    let n = 0;
+    for (const set of collectionDirtyCounts.values()) n += set.size;
+    return n;
+  }, [collectionDirtyCounts]);
+
+  // First dirty (key, slug) for the StatusBar's "Aç" CTA. Iteration order
+  // of the Map mirrors collection-tab order, so this lands on whichever
+  // collection the user encountered first — predictable, not random.
+  const firstDirtyCollectionTarget = useMemo(() => {
+    for (const [key, slugs] of collectionDirtyCounts) {
+      const slug = slugs.values().next().value;
+      if (slug) return { key, slug };
+    }
+    return null;
+  }, [collectionDirtyCounts]);
+
+  // "Anything to preview" — either side counts. Drives the Önizle
+  // button visibility and the auto-close-on-clean effect.
+  const anyPreviewable = previewableCount + collectionDirtyTotal > 0;
+
   const allTabs = useMemo(
     () => [
       { id: "page", label: "Sayfa", count: pageBlockList.length, dirty: pageDirty },
@@ -277,8 +343,8 @@ export function AdminDrawer() {
   // preview (dirty drains to 0) or when the user clicks a different tab.
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   useEffect(() => {
-    if (isPreviewOpen && previewableCount === 0) setPreviewOpen(false);
-  }, [isPreviewOpen, previewableCount]);
+    if (isPreviewOpen && !anyPreviewable) setPreviewOpen(false);
+  }, [isPreviewOpen, anyPreviewable]);
   /** @param {string} tab */
   const setActiveTab = (tab) => {
     if (isPreviewOpen) setPreviewOpen(false);
@@ -293,6 +359,19 @@ export function AdminDrawer() {
     if (allTabs.some((t) => t.id === activeTab)) return;
     setActiveTabState("page");
   }, [allTabs, activeTab]);
+
+  // Failsafe for the "Aç" auto-open signal. The card normally consumes
+  // `activeCollectionItem` on mount and clears it; if the target slug
+  // sits past a paginated window the card never mounts and the signal
+  // would otherwise persist in context — opening that row unexpectedly
+  // later when the user "Load more"s into it. As soon as the user
+  // navigates to any tab other than the target collection, drop the
+  // signal so it can't fire stale.
+  useEffect(() => {
+    if (!activeCollectionItem) return;
+    if (activeTab === `collection:${activeCollectionItem.key}`) return;
+    setActiveCollectionItem(null);
+  }, [activeTab, activeCollectionItem, setActiveCollectionItem]);
 
   // Per-group collapse state. Storing the *closed* set (not open) means new
   // groups arriving via discovery default to expanded — which is what users
@@ -333,8 +412,8 @@ export function AdminDrawer() {
     });
   }, [activeBlock, blocks, pathname, isDrawerOpen, setDrawerOpen]);
 
-  // Track the wall-clock time of the most recent successful save so the
-  // status bar can show "Kayıtlı · HH:MM" once dirty drains.
+  // Track the wall-clock time of the most recent successful draft autosave
+  // so the header pill can echo "Taslak kayıtlı HH:MM" once dirty drains.
   const [lastSavedAt, setLastSavedAt] = useState(/** @type {string | null} */ (null));
   useEffect(() => {
     if (draftSyncStatus === "saved") {
@@ -344,6 +423,44 @@ export function AdminDrawer() {
       );
     }
   }, [draftSyncStatus]);
+
+  // Transient "Veri kaydedildi" pulse for the header pill: fires after a
+  // successful publish (`onSaveAll`) and clears itself a few seconds later
+  // so the pill returns to its idle dot. Distinct from `lastSavedAt` —
+  // that one tracks draft autosaves; this one signals a real publish.
+  // Detection is transition-based: `isSaving` goes true → false; if the
+  // round-trip didn't surface an error and dirty drained, it's a success.
+  const [publishedFlash, setPublishedFlash] = useState(false);
+  const prevIsSavingRef = useRef(false);
+  useEffect(() => {
+    const wasSaving = prevIsSavingRef.current;
+    prevIsSavingRef.current = isSaving;
+    if (!wasSaving || isSaving) return;
+    if (error) return;
+    if (dirtyCount !== 0) return;
+    // Kaydet only publishes content blocks. If collection drafts are
+    // still pending in a region tab, "Veri kaydedildi" would overstate
+    // what actually happened. Stay silent until everything is clean.
+    if (collectionDirtyTotal !== 0) return;
+    setPublishedFlash(true);
+    // The just-published data IS the saved state now — any leftover
+    // draft timestamp from before would lie ("Taslak kayıtlı") about
+    // a draft slot the publish round-trip just emptied. Clearing it
+    // here also prevents the pill from falling back to that stale
+    // label once the flash window closes.
+    setLastSavedAt(null);
+  }, [isSaving, error, dirtyCount, collectionDirtyTotal]);
+  useEffect(() => {
+    if (!publishedFlash) return undefined;
+    const t = setTimeout(() => setPublishedFlash(false), 2400);
+    return () => clearTimeout(t);
+  }, [publishedFlash]);
+  // A new draft autosave or returning to dirty implicitly invalidates the
+  // "Veri kaydedildi" flash — the data no longer matches the just-published
+  // state.
+  useEffect(() => {
+    if (draftSyncStatus === "saving" || dirtyCount > 0) setPublishedFlash(false);
+  }, [draftSyncStatus, dirtyCount]);
 
   const isConflict = error instanceof CmsApiError && error.isConflict;
   const isForbidden = error instanceof CmsApiError && error.isForbidden;
@@ -380,11 +497,18 @@ export function AdminDrawer() {
         aria-hidden={!isDrawerOpen}
       >
         <div style={paneContainerStyle}>
-          <PanelHeader breadcrumbs={breadcrumbs} dirty={dirtyCount > 0} />
+          <PanelHeader
+            breadcrumbs={breadcrumbs}
+            dirty={dirtyCount > 0}
+            draftSyncStatus={draftSyncStatus}
+            isSaving={isSaving}
+            lastSavedAt={lastSavedAt}
+            publishedFlash={publishedFlash}
+          />
 
           {isPreviewOpen ? (
             <PreviewHeader
-              count={previewableCount}
+              count={previewableCount + collectionDirtyTotal}
               onBack={() => setPreviewOpen(false)}
             />
           ) : (
@@ -401,11 +525,16 @@ export function AdminDrawer() {
               drafts={drafts}
               dirtyByPath={dirtyByPath}
               itemSchemas={itemSchemas}
+              collectionDirtyCounts={collectionDirtyCounts}
               onGoToBlock={(block) => {
                 setPreviewOpen(false);
                 const scope = (block._slug ?? pathname) === pathname ? "page" : "global";
                 setActiveTabState(scope);
                 setActiveBlock(block.blockPath);
+              }}
+              onGoToCollection={(collectionKey) => {
+                setPreviewOpen(false);
+                setActiveTabState(`collection:${collectionKey}`);
               }}
             />
           ) : (activeTab === "page" || activeTab === "global") ? (
@@ -449,12 +578,27 @@ export function AdminDrawer() {
 
           <StatusBar
             dirtyCount={dirtyCount}
+            collectionDirtyCount={collectionDirtyTotal}
+            firstDirtyCollectionTarget={firstDirtyCollectionTarget}
+            onGoToCollection={(target) => {
+              setActiveTabState(`collection:${target.key}`);
+              // Signal the matching RegionItemCard to auto-expand. Done in
+              // a microtask so the tab body has time to mount and the
+              // card's effect can fire on first paint instead of racing
+              // setState in the same render.
+              setActiveCollectionItem({ key: target.key, slug: target.slug });
+            }}
             isSaving={isSaving}
             draftSyncStatus={draftSyncStatus}
-            lastSavedAt={lastSavedAt}
-            onDiscardAll={onDiscardAll}
+            onDiscardAll={() => {
+              onDiscardAll();
+              // Drop the pill's "Taslak kayıtlı HH:MM" indicator — the
+              // server draft just got cleared, so a stale timestamp
+              // pointing to a no-longer-existing draft is misleading.
+              setLastSavedAt(null);
+            }}
             onSaveAll={onSaveAll}
-            previewableCount={previewableCount}
+            previewableCount={previewableCount + collectionDirtyTotal}
             isPreviewOpen={isPreviewOpen}
             onTogglePreview={() => setPreviewOpen((v) => !v)}
           />
@@ -500,9 +644,16 @@ export function AdminDrawer() {
 // ---------------------------------------------------------------------------
 
 /**
- * @param {{ breadcrumbs: { label: string }[], dirty: boolean }} props
+ * @param {{
+ *   breadcrumbs: { label: string }[],
+ *   dirty: boolean,
+ *   draftSyncStatus: "idle"|"saving"|"saved"|"failed",
+ *   isSaving: boolean,
+ *   lastSavedAt: string | null,
+ *   publishedFlash: boolean,
+ * }} props
  */
-function PanelHeader({ breadcrumbs, dirty }) {
+function PanelHeader({ breadcrumbs, dirty, draftSyncStatus, isSaving, lastSavedAt, publishedFlash }) {
   const pageLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? "";
 
   return (
@@ -523,16 +674,178 @@ function PanelHeader({ breadcrumbs, dirty }) {
 
       <div style={titleBarStyle}>
         <h2 style={pageTitleStyle}>{pageLabel}</h2>
-        <span
-          style={dirty ? { ...modeChipStyle, ...modeChipDirtyStyle } : modeChipStyle}
-          title={dirty ? "Kaydedilmemiş değişiklikler var" : "Sayfa izleniyor"}
-        >
-          {dirty ? "DÜZENLENİYOR" : "İZLENİYOR"}
-        </span>
+        <HeaderStatusPill
+          dirty={dirty}
+          draftSyncStatus={draftSyncStatus}
+          isSaving={isSaving}
+          lastSavedAt={lastSavedAt}
+          publishedFlash={publishedFlash}
+        />
       </div>
     </header>
   );
 }
+
+/**
+ * Pill in the panel header replacing the old "İZLENİYOR / DÜZENLENİYOR"
+ * mode chip. Surfaces the page-level autosave state with a coloured dot
+ * + sans label + (when there's one) a mono wall-clock timestamp, so the
+ * admin can glance at the top of the drawer and see whether their work
+ * has been stashed to the server. Mirrors the bottom StatusBar's
+ * vocabulary on purpose — same dot tones, same typography.
+ *
+ * @param {{
+ *   dirty: boolean,
+ *   draftSyncStatus: "idle"|"saving"|"saved"|"failed",
+ *   isSaving: boolean,
+ *   lastSavedAt: string | null,
+ *   publishedFlash: boolean,
+ * }} props
+ */
+function HeaderStatusPill({ dirty, draftSyncStatus, isSaving, lastSavedAt, publishedFlash }) {
+  const isSyncing = draftSyncStatus === "saving" || isSaving;
+  const isFailed = draftSyncStatus === "failed";
+
+  /** @type {{ state: string, bg: string, glow: string, pulse: boolean, label: React.ReactNode, title: string }} */
+  let view;
+
+  if (isSyncing) {
+    view = {
+      state: "saving",
+      bg: STATUS_WARN,
+      glow: `0 0 5px ${STATUS_WARN}66`,
+      pulse: true,
+      label: "Kaydediliyor…",
+      title: "Taslak şu anda kaydediliyor",
+    };
+  } else if (isFailed) {
+    view = {
+      state: "failed",
+      bg: STATUS_DANGER,
+      glow: "none",
+      pulse: false,
+      label: "Kaydedilemedi",
+      title: "Taslak kaydedilemedi",
+    };
+  } else if (publishedFlash) {
+    // Post-publish pulse: drafts have been promoted to live data, so a
+    // "Taslak kayıtlı" label would understate what just happened. Show
+    // "Veri kaydedildi" for a couple of seconds before falling back to
+    // the idle dot (or to draft timestamps if the user starts typing
+    // again).
+    view = {
+      state: "published",
+      bg: STATUS_OK,
+      glow: `0 0 5px ${STATUS_OK}66`,
+      pulse: false,
+      label: "Veri kaydedildi",
+      title: "Tüm değişiklikler yayınlandı",
+    };
+  } else if (lastSavedAt) {
+    view = {
+      state: `saved:${lastSavedAt}`,
+      bg: STATUS_OK,
+      glow: `0 0 5px ${STATUS_OK}66`,
+      pulse: false,
+      label: (
+        <>
+          Taslak kayıtlı
+          <span style={headerPillTimeStyle}>{lastSavedAt}</span>
+        </>
+      ),
+      title: `Taslak en son ${lastSavedAt}'de kaydedildi`,
+    };
+  } else if (dirty) {
+    view = {
+      state: "dirty",
+      bg: ACCENT,
+      glow: `0 0 5px ${ACCENT}66`,
+      pulse: false,
+      label: "Düzenleniyor",
+      title: "Kaydedilmemiş değişiklikler var",
+    };
+  } else {
+    // Idle baseline: pill stays mounted as a dot-only chip so the
+    // surface has a steady anchor in the header. Label animates in on
+    // top of it when state arrives.
+    view = {
+      state: "idle",
+      bg: TEXT_FAINT,
+      glow: "none",
+      pulse: false,
+      label: null,
+      title: "",
+    };
+  }
+
+  return (
+    <motion.div
+      layout
+      transition={{ duration: 0.22, ease: [0.32, 0.72, 0.18, 1] }}
+      style={{ ...headerPillStyle, transformOrigin: "center", overflow: "hidden" }}
+      title={view.title}
+    >
+      <span
+        className={view.pulse ? "skylab-cms-status-pulse" : undefined}
+        style={{ ...headerPillDotStyle, background: view.bg, boxShadow: view.glow }}
+      />
+      <AnimatePresence mode="popLayout" initial={false}>
+        {view.label != null ? (
+          <motion.span
+            key={view.state}
+            initial={{ opacity: 0, x: 4 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -4 }}
+            transition={{ duration: 0.16, ease: [0.32, 0.72, 0.18, 1] }}
+            style={headerPillLabelStyle}
+          >
+            {view.label}
+          </motion.span>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+const headerPillStyle = /** @type {React.CSSProperties} */ ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  // Lock vertical size so empty (dot-only) state matches the label
+  // state's height — only the horizontal axis animates as the label
+  // appears/disappears, no vertical jitter on the header.
+  minHeight: 22,
+  padding: "0 10px",
+  borderRadius: 99,
+  background: "rgba(255,255,255,0.025)",
+  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
+  flexShrink: 0,
+  alignSelf: "center",
+});
+
+const headerPillDotStyle = /** @type {React.CSSProperties} */ ({
+  width: 6,
+  height: 6,
+  borderRadius: "50%",
+  flexShrink: 0,
+  display: "inline-block",
+  transition: "background 220ms ease, box-shadow 220ms ease",
+});
+
+const headerPillLabelStyle = /** @type {React.CSSProperties} */ ({
+  fontSize: 12,
+  color: TEXT_MUTED,
+  whiteSpace: "nowrap",
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: 6,
+});
+
+const headerPillTimeStyle = /** @type {React.CSSProperties} */ ({
+  fontFamily: FONT_MONO,
+  fontSize: 11,
+  color: TEXT_FAINT,
+});
 
 // ---------------------------------------------------------------------------
 // Tab bar
@@ -683,7 +996,14 @@ function TabButton({ id, label, count, active, dirty, onClick }) {
       >
         {count}
       </span>
-      {dirty ? <span style={tabDirtyDotStyle} aria-label="kaydedilmemiş değişiklik var" /> : null}
+      {dirty ? (
+        <span
+          style={isCollection
+            ? { ...tabDirtyDotStyle, background: COLLECTION_ACCENT, boxShadow: `0 0 6px ${COLLECTION_ACCENT}80` }
+            : tabDirtyDotStyle}
+          aria-label="kaydedilmemiş değişiklik var"
+        />
+      ) : null}
     </button>
   );
 }
@@ -947,6 +1267,19 @@ function PreviewHeader({ count, onBack }) {
 // padding tab buttons use (`tabButtonStyle` in `admin-drawer-styles.js`).
 // Net height = 10 + 12px text/icon + 10 + 1px border ≈ 33px on both
 // surfaces, so swapping between them doesn't reflow the body slot.
+// Shared enter/exit choreography for StatusBar action buttons. Mirrors the
+// header pill's easing curve so the bottom-of-drawer transitions read as
+// part of the same family — a small upward slide on enter, fade out on
+// exit, with `layout` taking care of the horizontal stagger when sibling
+// buttons appear/disappear next to each other.
+const statusActionMotion = /** @type {const} */ ({
+  layout: true,
+  initial: { opacity: 0, y: 4, scale: 0.96 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: 4, scale: 0.96 },
+  transition: { duration: 0.18, ease: [0.32, 0.72, 0.18, 1] },
+});
+
 const previewHeaderStyle = /** @type {React.CSSProperties} */ ({
   display: "flex",
   alignItems: "stretch",
@@ -990,9 +1323,11 @@ const previewCountStyle = /** @type {React.CSSProperties} */ ({
 /**
  * @param {{
  *   dirtyCount: number,
+ *   collectionDirtyCount: number,
+ *   firstDirtyCollectionTarget: { key: string, slug: string } | null,
+ *   onGoToCollection: (target: { key: string, slug: string }) => void,
  *   isSaving: boolean,
  *   draftSyncStatus: "idle"|"saving"|"saved"|"failed",
- *   lastSavedAt: string | null,
  *   onDiscardAll: () => void,
  *   onSaveAll: () => void,
  *   previewableCount: number,
@@ -1001,41 +1336,78 @@ const previewCountStyle = /** @type {React.CSSProperties} */ ({
  * }} props
  */
 function StatusBar({
-  dirtyCount, isSaving, draftSyncStatus, lastSavedAt,
+  dirtyCount, collectionDirtyCount, firstDirtyCollectionTarget, onGoToCollection,
+  isSaving, draftSyncStatus,
   onDiscardAll, onSaveAll,
   previewableCount, isPreviewOpen, onTogglePreview,
 }) {
-  const isDirty = dirtyCount > 0;
+  const isContentDirty = dirtyCount > 0;
+  const isCollectionDirty = collectionDirtyCount > 0;
+  const isBothDirty = isContentDirty && isCollectionDirty;
+  const isOnlyCollectionDirty = !isContentDirty && isCollectionDirty;
   const isSyncing = draftSyncStatus === "saving" || isSaving;
   const isFailed  = draftSyncStatus === "failed";
 
-  let dotColor = TEXT_FAINT;
-  let dotPulse = false;
-  if (isDirty) dotColor = ACCENT;
-  else if (isSyncing) { dotColor = STATUS_WARN; dotPulse = true; }
-  else if (isFailed) dotColor = STATUS_DANGER;
-  else if (lastSavedAt) dotColor = STATUS_OK;
+  // Status dot has four dirty states + transient sync/saved/failed.
+  // The dirty colours never pulse (a steady tint conveys "pending"
+  // without competing for attention with the syncing pulse).
+  /** @type {React.CSSProperties} */
+  const dotBackground = (() => {
+    if (isBothDirty) {
+      return /** @type {*} */ ({
+        background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT} 50%, ${COLLECTION_ACCENT} 50%, ${COLLECTION_ACCENT} 100%)`,
+        boxShadow: `0 0 4px ${ACCENT}66, 0 0 4px ${COLLECTION_ACCENT}66`,
+      });
+    }
+    if (isContentDirty) {
+      return { background: ACCENT, boxShadow: `0 0 8px ${ACCENT}80` };
+    }
+    if (isCollectionDirty) {
+      return { background: COLLECTION_ACCENT, boxShadow: `0 0 8px ${COLLECTION_ACCENT}80` };
+    }
+    if (isSyncing) {
+      return { background: STATUS_WARN, boxShadow: `0 0 6px ${STATUS_WARN}66` };
+    }
+    if (isFailed) {
+      return { background: STATUS_DANGER, boxShadow: "none" };
+    }
+    return { background: TEXT_FAINT, boxShadow: "none" };
+  })();
+  const dotPulse = isSyncing && !isContentDirty && !isCollectionDirty;
 
   /** @type {React.ReactNode} */
   let msg;
   if (isSyncing) {
     msg = <span style={statusMsgStyle}>Taslak kaydediliyor…</span>;
-  } else if (isDirty) {
+  } else if (isBothDirty) {
+    msg = (
+      <span style={statusMsgStyle}>
+        <span style={statusMsgEmphasisStyle}>{dirtyCount}</span>
+        <span style={{ color: TEXT_FAINT, margin: "0 1px" }}>/</span>
+        <span style={{ ...statusMsgEmphasisStyle, color: COLLECTION_ACCENT }}>{collectionDirtyCount}</span>
+        {" "}kaydedilmemiş değişiklik
+      </span>
+    );
+  } else if (isContentDirty) {
     msg = (
       <span style={statusMsgStyle}>
         <span style={statusMsgEmphasisStyle}>{dirtyCount}</span> kaydedilmemiş değişiklik
       </span>
     );
-  } else if (isFailed) {
-    msg = <span style={statusMsgStyle}>Taslak kaydedilemedi</span>;
-  } else if (lastSavedAt) {
+  } else if (isCollectionDirty) {
     msg = (
-      <span style={{ ...statusMsgStyle, ...statusMsgCleanStyle }}>
-        Kayıtlı <span style={statusTsStyle}>{lastSavedAt}</span>
+      <span style={statusMsgStyle}>
+        <span style={{ ...statusMsgEmphasisStyle, color: COLLECTION_ACCENT }}>{collectionDirtyCount}</span>
+        {" "}koleksiyon taslağı
       </span>
     );
+  } else if (isFailed) {
+    msg = <span style={statusMsgStyle}>Taslak kaydedilemedi</span>;
   } else {
-    msg = <span style={{ ...statusMsgStyle, ...statusMsgCleanStyle }}>Hazır</span>;
+    // Clean state. The header pill carries the "Taslak kayıtlı HH:MM" /
+    // "Veri kaydedildi" detail — repeating it here would be noisy, so
+    // the bar settles on a quiet idle line.
+    msg = <span style={{ ...statusMsgStyle, ...statusMsgCleanStyle }}>Değişiklik yok</span>;
   }
 
   return (
@@ -1043,22 +1415,15 @@ function StatusBar({
       <div style={statusSignalStyle}>
         <span
           className={dotPulse ? "skylab-cms-status-pulse" : undefined}
-          style={{
-            ...statusDotStyle,
-            background: dotColor,
-            boxShadow:
-              dotColor === ACCENT      ? `0 0 8px ${ACCENT}80`
-            : dotColor === STATUS_OK   ? `0 0 6px ${STATUS_OK}66`
-            : dotColor === STATUS_WARN ? `0 0 6px ${STATUS_WARN}66`
-            : "none",
-          }}
+          style={{ ...statusDotStyle, ...dotBackground }}
         />
         {msg}
       </div>
-      {isDirty ? (
-        <div style={statusActionsStyle}>
+      <div style={statusActionsStyle}>
+        <AnimatePresence mode="popLayout" initial={false}>
           {previewableCount > 0 ? (
-            <button
+            <motion.button
+              key="preview"
               type="button"
               onClick={onTogglePreview}
               className="skylab-cms-btn-ghost"
@@ -1066,36 +1431,60 @@ function StatusBar({
               aria-label={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
               title={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
               aria-pressed={isPreviewOpen}
+              {...statusActionMotion}
             >
               {isPreviewOpen ? <Pencil size={13} /> : <Eye size={13} />}
               <span>{isPreviewOpen ? "Düzenle" : "Önizle"}</span>
-            </button>
+            </motion.button>
           ) : null}
-          <button
-            type="button"
-            onClick={onDiscardAll}
-            disabled={isSaving}
-            className="skylab-cms-btn-ghost"
-            style={btnGhostStyle}
-            aria-label="Tüm değişiklikleri iptal et"
-            title="Tüm değişiklikleri iptal et"
-          >
-            <Undo2 size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={onSaveAll}
-            disabled={isSaving}
-            className="skylab-cms-btn-primary"
-            style={btnPrimaryStyle}
-            aria-label="Tümünü kaydet"
-            title="Tümünü kaydet"
-          >
-            <Check size={13} />
-            <span>Kaydet</span>
-          </button>
-        </div>
-      ) : null}
+          {isContentDirty ? (
+            <motion.button
+              key="discard"
+              type="button"
+              onClick={onDiscardAll}
+              disabled={isSaving}
+              className="skylab-cms-btn-ghost"
+              style={btnGhostStyle}
+              aria-label="Tüm değişiklikleri iptal et"
+              title="Tüm değişiklikleri iptal et"
+              {...statusActionMotion}
+            >
+              <Undo2 size={13} />
+            </motion.button>
+          ) : null}
+          {isContentDirty ? (
+            <motion.button
+              key="save"
+              type="button"
+              onClick={onSaveAll}
+              disabled={isSaving}
+              className="skylab-cms-btn-primary"
+              style={btnPrimaryStyle}
+              aria-label="Tümünü kaydet"
+              title="Tümünü kaydet"
+              {...statusActionMotion}
+            >
+              <Check size={13} />
+              <span>Kaydet</span>
+            </motion.button>
+          ) : null}
+          {!isContentDirty && isOnlyCollectionDirty && firstDirtyCollectionTarget ? (
+            <motion.button
+              key="open-collection"
+              type="button"
+              onClick={() => onGoToCollection(firstDirtyCollectionTarget)}
+              className="skylab-cms-btn-primary"
+              style={{ ...btnPrimaryStyle, background: COLLECTION_ACCENT, color: "#241c25" }}
+              aria-label={`${firstDirtyCollectionTarget.key} / ${firstDirtyCollectionTarget.slug} kaydını aç`}
+              title={`${firstDirtyCollectionTarget.key} / ${firstDirtyCollectionTarget.slug} kaydını aç`}
+              {...statusActionMotion}
+            >
+              <Pencil size={13} />
+              <span>Aç</span>
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

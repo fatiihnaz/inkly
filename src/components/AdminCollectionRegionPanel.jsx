@@ -270,9 +270,21 @@ function RegionHeader({ filter, loaded, total }) {
  * @param {{ collectionKey: string, slug: string, canEdit: boolean }} props
  */
 function RegionItemCard({ collectionKey, slug, canEdit }) {
+  const { activeCollectionItem, setActiveCollectionItem } = useCmsContext();
   const [isOpen, setIsOpen] = useState(false);
   const editor = useCollectionEditor(collectionKey, slug);
   const isDirty = editor.hasDraft && editor.canEdit;
+
+  // Honour the StatusBar "Aç" jump: when context targets this exact row,
+  // open it once and clear the signal so re-visiting the tab doesn't keep
+  // forcing the card open after the user closes it manually.
+  useEffect(() => {
+    if (!activeCollectionItem) return;
+    if (activeCollectionItem.key !== collectionKey) return;
+    if (activeCollectionItem.slug !== slug) return;
+    setIsOpen(true);
+    setActiveCollectionItem(null);
+  }, [activeCollectionItem, collectionKey, slug, setActiveCollectionItem]);
 
   return (
     <div
@@ -299,7 +311,10 @@ function RegionItemCard({ collectionKey, slug, canEdit }) {
         {!canEdit ? <span style={readonlyChipStyle}>readonly</span> : null}
 
         {isDirty ? (
-          <span style={dirtyDotStyle} aria-label="Kaydedilmemiş değişiklik" />
+          <span
+            style={{ ...dirtyDotStyle, background: COLLECTION_ACCENT, boxShadow: `0 0 5px ${COLLECTION_ACCENT}80` }}
+            aria-label="Kaydedilmemiş değişiklik"
+          />
         ) : null}
 
         {isDirty ? (

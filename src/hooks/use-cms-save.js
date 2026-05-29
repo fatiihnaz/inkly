@@ -30,7 +30,7 @@ import { useCmsAdmin } from "./use-cms-admin.js";
  * @property {boolean} isSaving
  * @property {Error|null} error
  * @property {() => Promise<void>} save     PUT all dirty updates, then clear matching local drafts.
- * @property {() => void} discard           Wipe local edits + queue published values for blocks with backend drafts (autosave then clears them).
+ * @property {() => void} discard           Wipe local edits + silently clean any server-side draft slots (no autosave pulse).
  */
 
 /**
@@ -38,7 +38,7 @@ import { useCmsAdmin } from "./use-cms-admin.js";
  */
 export function useCmsSave() {
   const {
-    blocks, drafts, setDraft, clearDraft, clearDrafts, setActiveBlock,
+    blocks, drafts, clearDraft, clearDrafts, discardServerDrafts, setActiveBlock,
   } = useCmsContext();
   const { savePage, isSaving, error } = useCmsAdmin();
 
@@ -89,17 +89,22 @@ export function useCmsSave() {
   }, [dirtyUpdates, savePage, clearDraft, setActiveBlock]);
 
   const discard = useCallback(() => {
-    // Wipe local edits, then queue published values for any block that
-    // still has a server-side draft. The autosave effect picks those up
-    // ~1s later and (because each value === published) the backend
-    // auto-cleans the corresponding Redis entries on receipt.
+    // Local edits first — `clearDrafts` empties the map, which also
+    // cancels any pending autosave debounce (the effect's deps include
+    // `drafts`).
     clearDrafts();
+    // Server-side cleanup goes through the provider's silent path: it
+    // nulls `draftValue` optimistically (so dirty count + UI surfaces
+    // update immediately) and fires the PUTs without flashing the
+    // autosave status. Otherwise the pill would briefly say "Taslak
+    // kayıtlı HH:MM" for a request that just deleted that draft.
+    /** @type {string[]} */
+    const pathsWithServerDraft = [];
     for (const block of blocks.values()) {
-      if (block.draftValue != null) {
-        setDraft(block.blockPath, block.value);
-      }
+      if (block.draftValue != null) pathsWithServerDraft.push(block.blockPath);
     }
-  }, [blocks, clearDrafts, setDraft]);
+    discardServerDrafts(pathsWithServerDraft);
+  }, [blocks, clearDrafts, discardServerDrafts]);
 
   return {
     dirtyUpdates,

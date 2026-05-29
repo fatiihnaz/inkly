@@ -34,6 +34,8 @@ import {
   SURFACE_1,
   RADIUS_SM,
   FONT_MONO,
+  COLLECTION_ACCENT,
+  COLLECTION_LINE,
   STATUS_OK,
   STATUS_DANGER,
   STATUS_WARN,
@@ -64,26 +66,49 @@ const DIFF_CHANGED = STATUS_WARN;
  *   drafts: Map<string, *>,
  *   dirtyByPath: Map<string, boolean>,
  *   itemSchemas: Map<string, ItemSchema>,
+ *   collectionDirtyCounts: Map<string, Set<string>>,
  *   onGoToBlock: (block: BlockResponse) => void,
+ *   onGoToCollection: (collectionKey: string) => void,
  * }} props
  */
-export function AdminChangesPanel({ blockList, drafts, dirtyByPath, itemSchemas, onGoToBlock }) {
+export function AdminChangesPanel({
+  blockList, drafts, dirtyByPath, itemSchemas,
+  collectionDirtyCounts, onGoToBlock, onGoToCollection,
+}) {
   const dirty = useMemo(
     () => blockList.filter(
       (b) => b.blockType !== "Collection" && dirtyByPath.get(b.blockPath),
     ),
     [blockList, dirtyByPath],
   );
+  const collectionEntries = useMemo(
+    () => [...collectionDirtyCounts.entries()]
+      .map(([key, set]) => ({ key, count: set.size }))
+      .filter((e) => e.count > 0)
+      .sort((a, b) => a.key.localeCompare(b.key)),
+    [collectionDirtyCounts],
+  );
+
+  const isEmpty = dirty.length === 0 && collectionEntries.length === 0;
 
   return (
     <section style={paneStyle}>
       <div style={scrollStyle}>
-        {dirty.length === 0 ? (
+        {isEmpty ? (
           <div style={emptyStateStyle}>
             Henüz değişiklik yok.
           </div>
         ) : (
           <ul style={listStyle} data-cms-list>
+            {collectionEntries.map((entry) => (
+              <li key={`coll:${entry.key}`} style={{ listStyle: "none" }}>
+                <CollectionDraftCard
+                  collectionKey={entry.key}
+                  count={entry.count}
+                  onGoToCollection={onGoToCollection}
+                />
+              </li>
+            ))}
             {dirty.map((block) => (
               <li key={block.blockPath} style={{ listStyle: "none" }}>
                 <BlockDiffCard
@@ -98,6 +123,56 @@ export function AdminChangesPanel({ blockList, drafts, dirtyByPath, itemSchemas,
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Header-only card representing a collection with pending item drafts.
+ * Same visual scaffolding as `BlockDiffCard` — inset rail, type icon,
+ * Düzenle button — so it slots naturally into the same list. No body
+ * because we don't surface per-item diffs here; the count is a
+ * pointer, the Düzenle button is the way in.
+ *
+ * @param {{
+ *   collectionKey: string,
+ *   count: number,
+ *   onGoToCollection: (key: string) => void,
+ * }} props
+ */
+function CollectionDraftCard({ collectionKey, count, onGoToCollection }) {
+  const meta = TYPE_META.Collection;
+  const cardStyle = {
+    ...blockCardStyle,
+    boxShadow: `inset 0 0 0 1px ${HAIRLINE}, inset 2px 0 0 ${meta.color}`,
+  };
+  return (
+    <div className="skylab-cms-block-card" style={cardStyle}>
+      <div style={blockHeaderStyle}>
+        <span
+          aria-hidden="true"
+          style={{ ...typeIconStyle, color: meta.color }}
+        >
+          {meta.glyph}
+        </span>
+        <span style={blockPathStyle} title={collectionKey}>
+          {collectionKey}
+        </span>
+        <span style={collectionDraftCountStyle}>
+          {count} taslak
+        </span>
+        <span style={blockTypeLabelStyle}>{meta.label}</span>
+        <button
+          type="button"
+          onClick={() => onGoToCollection(collectionKey)}
+          className="skylab-cms-icon-button"
+          style={goToButtonStyle}
+          aria-label={`${collectionKey} koleksiyonunu aç`}
+          title="Koleksiyonu aç"
+        >
+          <Pencil size={11} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -913,6 +988,17 @@ const scrollStyle = /** @type {React.CSSProperties} */ ({
   minHeight: 0,
   overflowY: "auto",
   scrollbarWidth: "none",
+});
+
+const collectionDraftCountStyle = /** @type {React.CSSProperties} */ ({
+  fontFamily: FONT_MONO,
+  fontSize: 10,
+  letterSpacing: "0.04em",
+  color: COLLECTION_ACCENT,
+  padding: "1px 6px",
+  border: `1px solid ${COLLECTION_LINE}`,
+  borderRadius: 3,
+  opacity: 0.85,
 });
 
 const diffBoxStyle = /** @type {React.CSSProperties} */ ({

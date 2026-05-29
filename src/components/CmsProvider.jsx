@@ -68,6 +68,14 @@ export function CmsProvider({
   const [activeBlock, setActiveBlock] = useState(
     /** @type {string|null} */ (null),
   );
+  // Drawer-side "open this row" signal for collection region tabs. Mirrors
+  // `activeBlock` but for `<AdminCollectionRegionPanel>`: when the StatusBar's
+  // "Aç" jump targets a specific (key, slug), the RegionItemCard reads this
+  // and auto-expands itself on next render. Cleared by the card after it
+  // honours the signal so subsequent collection-tab visits don't re-open.
+  const [activeCollectionItem, setActiveCollectionItem] = useState(
+    /** @type {{ key: string, slug: string } | null} */ (null),
+  );
   const [refetchToken, setRefetchToken] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   // Per-blockPath unsaved edits. Lives here (rather than in AdminDrawer) so
@@ -830,6 +838,82 @@ export function CmsProvider({
     return () => clearTimeout(timer);
   }, [drafts, stableGetAccessToken, flashDraftStatus]);
 
+  // Silent server-draft cleanup for the discard path. Fires a PUT with
+  // each block's published value (the only knob the API gives us for
+  // dropping a Redis draft — backend auto-cleans when draft===published)
+  // but doesn't go through the autosave debounce or touch
+  // `draftSyncStatus`. The pill therefore stays at its idle gray dot
+  // instead of flashing "Kaydediliyor… → Taslak kayıtlı HH:MM" for a
+  // request that conceptually removes a draft. Per-slug chaining mirrors
+  // the autosave path so a discard issued mid-flight can't overtake a
+  // still-pending autosave PUT for the same slug.
+  const discardServerDrafts = useCallback(
+    /** @param {string[]} blockPaths */
+    (blockPaths) => {
+      if (blockPaths.length === 0) return;
+      /** @type {Map<string, import("../lib/schemas.js").UpdateBlockItem[]>} */
+      const bySlug = new Map();
+      const currentBlocks = blocksRef.current;
+      const currentPathname = draftPathnameRef.current ?? "/";
+      for (const blockPath of blockPaths) {
+        const block = currentBlocks.get(blockPath);
+        if (!block || block.draftValue == null) continue;
+        const slug = block._slug ?? currentPathname;
+        const list = bySlug.get(slug) ?? [];
+        list.push({
+          blockPath: block.blockPath,
+          value: block.value,
+          version: block.version,
+        });
+        bySlug.set(slug, list);
+      }
+      if (bySlug.size === 0) return;
+
+      // Optimistic: nullify draftValue locally so dirtyCount drops to 0
+      // and downstream surfaces (StatusBar, pill, ChangesPanel) update
+      // immediately without waiting for the round-trip.
+      setBlocksState((prev) => {
+        let mutated = false;
+        const next = new Map(prev);
+        for (const [, blocksForSlug] of bySlug) {
+          for (const u of blocksForSlug) {
+            const cur = next.get(u.blockPath);
+            if (!cur || cur.draftValue == null) continue;
+            next.set(u.blockPath, { ...cur, draftValue: null });
+            mutated = true;
+          }
+        }
+        return mutated ? next : prev;
+      });
+
+      // Fire-and-forget cleanup PUTs. Per-slug chaining so concurrent
+      // autosaves can't sneak a stale draft in after the cleanup lands.
+      const currentConfig = draftConfigRef.current;
+      (async () => {
+        const accessToken = (await stableGetAccessToken()) || undefined;
+        for (const [slug, blocksForSlug] of bySlug) {
+          const previous =
+            inFlightDraftPerSlug.current.get(slug) ?? Promise.resolve();
+          const next = previous
+            .catch(() => {})
+            .then(() =>
+              updateDraft(
+                currentConfig,
+                { slug, blocks: blocksForSlug },
+                accessToken,
+              ),
+            )
+            .catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn("[skylab-cms] discard cleanup PUT failed:", err);
+            });
+          inFlightDraftPerSlug.current.set(slug, next);
+        }
+      })();
+    },
+    [stableGetAccessToken],
+  );
+
   const value = useMemo(
     () => ({
       config: normalizedConfig,
@@ -841,8 +925,11 @@ export function CmsProvider({
       setDraft,
       clearDraft,
       clearDrafts,
+      discardServerDrafts,
       activeBlock,
       setActiveBlock: setActiveBlockGuarded,
+      activeCollectionItem,
+      setActiveCollectionItem,
       refetchToken,
       triggerRefetch,
       itemSchemas: itemSchemasRef.current,
@@ -884,8 +971,10 @@ export function CmsProvider({
       setDraft,
       clearDraft,
       clearDrafts,
+      discardServerDrafts,
       activeBlock,
       setActiveBlockGuarded,
+      activeCollectionItem,
       refetchToken,
       triggerRefetch,
       itemSchemasVersion,
