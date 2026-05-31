@@ -7,5 +7,5 @@
 
 import "server-only";
 
-export { createCmsAuthOptions, isCmsAdmin, readCmsAuthMeta } from "./options.js";
+export { createCmsAuthOptions, isCmsAdmin, readCmsAuthMeta, withCmsAuth } from "./options.js";
 export { createSignInRoute } from "./signin.js";

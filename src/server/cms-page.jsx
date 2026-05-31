@@ -42,11 +42,10 @@
  */
 
 import { headers } from "next/headers";
-import { getServerSession } from "next-auth";
 
 import { getCmsPageBlocks } from "./get-content.js";
 import { createCmsConfig } from "../lib/config.js";
-import { isCmsAdmin, readCmsAuthMeta } from "../auth/server/options.js";
+import { publicAuth } from "../defaults/auth.js";
 
 const PATHNAME_HEADER = "x-pathname";
 
@@ -64,21 +63,19 @@ const PATHNAME_HEADER = "x-pathname";
  *   used server-side only and never passed to the client `Provider`.
  * @property {*} Provider
  *   The CMS provider component - typically `NextAuthCmsProvider` from
- *   `@skylab/cms/nextauth`, or your own wrapper. The provider receives
+ *   `@skylab/cms/auth/client`, or your own wrapper. The provider receives
  *   `config`, `isAdmin`, `userSub`, `initialBlocks`, `onAfterSave`, and
  *   `session` props.
- * @property {import("next-auth").AuthOptions} [authOptions]
- *   When set, `getSession` and `deriveAdmin` are wired automatically:
- *   `getSession` calls `getServerSession(authOptions)` and admin gating
- *   uses the metadata stamped by `createCmsAuthOptions` (or falls back to
- *   `session != null`). Pass `getSession`/`deriveAdmin` to override.
- * @property {() => Promise<*|null>} [getSession]
- *   Manual session resolver. Wins over `authOptions`. Omit for public-only
- *   setups - every visitor is treated as non-admin.
+ * The three auth callbacks below together form a `CmsAuthAdapter`
+ * (see `lib/auth.js`); omit them all for a public, read-only site (the
+ * `publicAuth` default). For NextAuth, spread `withCmsAuth(authOptions)` from
+ * `@skylab/cms/auth/server` - it supplies all three and keeps the CMS core
+ * itself free of any auth dependency.
+ *
+ * @property {import("../lib/auth.js").GetSession} [getSession]
+ *   Resolves the server session. Default: `publicAuth.getSession` (always null → public).
  * @property {(session: *) => boolean} [deriveAdmin]
- *   Manual admin check. Wins over `authOptions` metadata. Default depends
- *   on `authOptions`: if it carries CMS metadata, that drives the check;
- *   otherwise `session != null`.
+ *   Decides admin from the session. Default: `session != null`.
  * @property {(session: *) => string | null} [deriveUserSub]
  *   Default: `session?.user?.id ?? null`.
  * @property {(slug: string) => void | Promise<void>} [onAfterSave]
@@ -100,10 +97,9 @@ export function createCmsPage(options) {
     Provider,
     config,
     getServiceToken,
-    authOptions,
-    getSession,
-    deriveAdmin,
-    deriveUserSub = (session) => session?.user?.id ?? null,
+    getSession = publicAuth.getSession,
+    deriveAdmin = publicAuth.deriveAdmin,
+    deriveUserSub = publicAuth.deriveUserSub,
     onAfterSave,
   } = options;
 
@@ -132,18 +128,9 @@ export function createCmsPage(options) {
     ? { ...normalizedConfig, getServiceToken }
     : normalizedConfig;
 
-  const authMeta = authOptions ? readCmsAuthMeta(authOptions) : null;
-  const resolvedGetSession =
-    getSession ?? (authOptions ? () => getServerSession(authOptions) : null);
-  const resolvedDeriveAdmin =
-    deriveAdmin ??
-    (authMeta
-      ? (session) => isCmsAdmin(session, authMeta)
-      : (session) => session != null);
-
   return async function CmsPage({ slug, children }) {
     const resolvedSlug = slug ?? (await resolveSlugFromHeaders());
-    const session = resolvedGetSession ? await resolvedGetSession() : null;
+    const session = await getSession();
 
     let initialBlocks = [];
     try {
@@ -153,7 +140,7 @@ export function createCmsPage(options) {
     }
 
     return (
-      <Provider config={normalizedConfig} isAdmin={resolvedDeriveAdmin(session)} userSub={deriveUserSub(session)}
+      <Provider config={normalizedConfig} isAdmin={deriveAdmin(session)} userSub={deriveUserSub(session)}
         initialBlocks={initialBlocks} onAfterSave={onAfterSave} session={session}
       >
         {children}

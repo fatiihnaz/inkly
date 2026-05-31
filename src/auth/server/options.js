@@ -21,6 +21,8 @@
  * automatically without the caller wiring a separate `deriveAdmin`.
  */
 
+import { getServerSession } from "next-auth";
+
 /** @type {unique symbol} */
 const CMS_META = Symbol.for("@skylab/cms/auth.meta");
 
@@ -178,6 +180,37 @@ export function isCmsAdmin(session, meta) {
     return roles.includes(meta.adminRole);
   }
   return false;
+}
+
+/**
+ * Adapt NextAuth `authOptions` into the auth-agnostic callbacks
+ * `createCmsPage` expects, so the CMS core never has to import next-auth.
+ * Spread the result into the factory:
+ *
+ *   import { withCmsAuth } from "@skylab/cms/auth/server";
+ *   createCmsPage({ ...withCmsAuth(authOptions), config, Provider, ... });
+ *
+ * - `getSession` resolves the server session via `getServerSession`.
+ * - `deriveAdmin` uses the admin metadata stamped by `createCmsAuthOptions`
+ *   (falls back to `session != null` when the options didn't come from the
+ *   factory).
+ * - `deriveUserSub` reads `session.user.id`.
+ *
+ * @param {import("next-auth").AuthOptions} authOptions
+ * @returns {import("../../lib/auth.js").CmsAuthAdapter}
+ */
+export function withCmsAuth(authOptions) {
+  if (!authOptions) {
+    throw new Error("withCmsAuth: `authOptions` is required");
+  }
+  const meta = readCmsAuthMeta(authOptions);
+  return {
+    getSession: () => getServerSession(authOptions),
+    deriveAdmin: meta
+      ? (session) => isCmsAdmin(session, meta)
+      : (session) => session != null,
+    deriveUserSub: (session) => session?.user?.id ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
