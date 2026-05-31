@@ -9,15 +9,22 @@
  *     "prebuild": "cms-sync"
  *   }
  *
- * Reads `.env.local` from the working directory (Next.js consumers expect
- * that file to feed CMS_URL / KEYCLOAK_* into the build), walks `app/` for
+ * Reads `.env.local` from the working directory, walks `app/` for
  * `<EditableRegion>` and `useCmsBlock(..., metadata)` declarations, then
- * calls `syncAll`. On Keycloak 403 the failing token's claims are dumped
- * so the operator can see exactly which role is missing.
+ * calls `syncAll`.
+ *
+ * The service token for `POST /cms/sync` (and any failure diagnostics) comes
+ * from an optional `cms.config.js` in the project root - the CLI is a plain
+ * Node binary, so it loads that module instead of receiving function props:
+ *
+ *   // cms.config.js
+ *   export const getServiceToken = async () => "...";   // default: no token
+ *   export const onSyncError = (err) => { ... };         // optional
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { syncAll } from "../server/get-content.js";
 import { discoverManifests } from "../server/discover.js";
@@ -30,6 +37,14 @@ if (args.help) {
 }
 
 loadEnvFile(args.env ?? path.resolve(process.cwd(), ".env.local"));
+
+// Load the project's CMS config (service token + diagnostics) AFTER env so a
+// provider that reads process.env sees the loaded values.
+const projectConfig = await loadProjectConfig(process.cwd());
+const getServiceToken =
+  typeof projectConfig.getServiceToken === "function" ? projectConfig.getServiceToken : undefined;
+const onSyncError =
+  typeof projectConfig.onSyncError === "function" ? projectConfig.onSyncError : null;
 
 const appRoot = args.appRoot
   ? path.resolve(process.cwd(), args.appRoot)
@@ -63,10 +78,10 @@ if (args.dryRun) {
 }
 
 try {
-  await syncAll(manifests);
+  await syncAll(manifests, { baseUrl: projectConfig.baseUrl, getServiceToken });
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
-  await debugServiceTokenClaims().catch(() => {});
+  if (onSyncError) await Promise.resolve(onSyncError(err)).catch(() => {});
   process.exit(1);
 }
 
@@ -105,11 +120,12 @@ Options:
   --dry-run            Print the discovered manifest as JSON without syncing
   --help, -h           Show this message
 
-Required environment:
+Environment:
   CMS_URL              Backend base URL (default: http://localhost:5000)
-  KEYCLOAK_ISSUER      Keycloak realm URL for service-to-service auth
-  KEYCLOAK_CLIENT_ID   Service account client id
-  KEYCLOAK_CLIENT_SECRET
+
+Project config (optional, ./cms.config.js):
+  getServiceToken      () => Promise<string> for POST /cms/sync (default: none)
+  onSyncError          (err) => void, called on failure (e.g. token diagnostics)
 `);
 }
 
@@ -134,44 +150,25 @@ function loadEnvFile(filePath) {
 }
 
 /**
- * On failure, fetch the service token directly and dump the claims that
- * the backend's `CmsAccessPolicy` checks (`azp`, `aud`, `resource_access`).
- * Most 403s come from the service account missing the `cms:access` role
- * mapping in Keycloak - this prints exactly what's there so you can tell.
+ * Load the project's optional `cms.config.js` (or `.mjs`) from `cwd`. Returns
+ * `{}` when absent. Exits on a load error so a broken config is loud, not
+ * silently ignored.
+ *
+ * @param {string} cwd
+ * @returns {Promise<{ getServiceToken?: () => Promise<string>, onSyncError?: (err: unknown) => void, baseUrl?: string }>}
  */
-async function debugServiceTokenClaims() {
-  const { KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET, KEYCLOAK_ISSUER } = process.env;
-  if (!KEYCLOAK_CLIENT_ID || !KEYCLOAK_CLIENT_SECRET || !KEYCLOAK_ISSUER) return;
-
-  const res = await fetch(`${KEYCLOAK_ISSUER}/protocol/openid-connect/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: KEYCLOAK_CLIENT_ID,
-      client_secret: KEYCLOAK_CLIENT_SECRET,
-    }),
-  });
-  if (!res.ok) {
-    console.error(`[cms-sync:debug] Token fetch failed: ${res.status} ${await res.text()}`);
-    return;
+async function loadProjectConfig(cwd) {
+  for (const name of ["cms.config.js", "cms.config.mjs"]) {
+    const p = path.resolve(cwd, name);
+    if (!existsSync(p)) continue;
+    try {
+      return await import(pathToFileURL(p).href);
+    } catch (err) {
+      console.error(
+        `[cms-sync] Failed to load ${name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
   }
-
-  const { access_token } = await res.json();
-  const [, payload] = access_token.split(".");
-  const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-
-  console.error("[cms-sync:debug] Service token claims:");
-  console.error(`  azp:             ${claims.azp}`);
-  console.error(`  sub:             ${claims.sub}`);
-  console.error(`  aud:             ${JSON.stringify(claims.aud)}`);
-  console.error(`  scope:           ${claims.scope}`);
-  console.error(`  resource_access: ${JSON.stringify(claims.resource_access)}`);
-
-  const ourRoles = claims.resource_access?.[claims.azp]?.roles ?? [];
-  console.error(`  -> roles for "${claims.azp}": ${JSON.stringify(ourRoles)}`);
-  if (!ourRoles.includes("cms:access")) {
-    console.error(`  ! "cms:access" role missing on service account.`);
-    console.error(`     Keycloak Admin -> Clients -> ${claims.azp} -> Service account roles -> Assign "cms:access".`);
-  }
+  return {};
 }

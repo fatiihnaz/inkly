@@ -57,6 +57,11 @@ const PATHNAME_HEADER = "x-pathname";
 /**
  * @typedef {Object} CreateCmsPageOptions
  * @property {CmsConfig | { baseUrl: string }} config
+ * @property {import("../lib/service-token.js").ServiceTokenProvider} [getServiceToken]
+ *   Server-only provider for the service token used by the SSR content fetch
+ *   (so public visitors get rendered content without a user session). Default:
+ *   no token. Inject e.g. a Keycloak client-credentials provider here. It is
+ *   used server-side only and never passed to the client `Provider`.
  * @property {*} Provider
  *   The CMS provider component - typically `NextAuthCmsProvider` from
  *   `@skylab/cms/nextauth`, or your own wrapper. The provider receives
@@ -94,6 +99,7 @@ export function createCmsPage(options) {
   const {
     Provider,
     config,
+    getServiceToken,
     authOptions,
     getSession,
     deriveAdmin,
@@ -118,6 +124,14 @@ export function createCmsPage(options) {
     ? /** @type {import("../lib/config.js").CmsConfig} */ (config)
     : createCmsConfig(config);
 
+  // Server-only view of the config: the service token may hold secrets and
+  // must never reach the client, so it rides on a separate object used only
+  // for the SSR fetch below. The `normalizedConfig` passed to <Provider>
+  // stays serializable (no functions, no secrets).
+  const serverConfig = getServiceToken
+    ? { ...normalizedConfig, getServiceToken }
+    : normalizedConfig;
+
   const authMeta = authOptions ? readCmsAuthMeta(authOptions) : null;
   const resolvedGetSession =
     getSession ?? (authOptions ? () => getServerSession(authOptions) : null);
@@ -133,7 +147,7 @@ export function createCmsPage(options) {
 
     let initialBlocks = [];
     try {
-      initialBlocks = await getCmsPageBlocks(normalizedConfig, resolvedSlug);
+      initialBlocks = await getCmsPageBlocks(serverConfig, resolvedSlug);
     } catch {
       // Backend offline or page not yet synced - render with empty blocks.
     }

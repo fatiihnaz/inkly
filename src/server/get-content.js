@@ -5,19 +5,21 @@
  * Pull it from React Server Components (`app/**\/page.jsx`, layouts,
  * route handlers, build scripts); never import it from a client component.
  *
- * All read helpers attach a Keycloak client-credentials token automatically
- * when KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET, and KEYCLOAK_ISSUER are
- * set in the environment.
+ * Read helpers attach a service token from `config.getServiceToken` when one
+ * is provided; otherwise they fall back to `noServiceToken` (no token) and
+ * reads go out unauthenticated. Inject a real provider via
+ * `createCmsPage({ getServiceToken })` when your backend requires auth for
+ * reads - vendor-specific providers (e.g. Keycloak) live on the consumer side.
  */
 
 import { createRestTransport } from "../defaults/transport.js";
-
-import { getClientCredentialsToken } from "./service-token.js";
+import { noServiceToken } from "../defaults/service-token.js";
 
 export { discoverManifests } from "./discover.js";
 
 /**
  * @import { CmsConfig } from "../lib/config.js"
+ * @import { ServiceTokenProvider } from "../lib/service-token.js"
  * @import { BlockResponse, ContentResponse, SyncManifestRequest, SyncResultResponse } from "../lib/schemas.js"
  */
 
@@ -37,7 +39,7 @@ export function cmsCacheTag(slug) {
  * @typedef {Object} GetCmsContentOptions
  * @property {number | false} [revalidate]   ISR window in seconds, or `false` for tag-only invalidation.
  * @property {string[]} [tags]               Extra cache tags.
- * @property {string} [accessToken]          Override the auto-fetched service token.
+ * @property {string} [accessToken]          Explicit token; wins over `config.getServiceToken`.
  */
 
 // ---------------------------------------------------------------------------
@@ -53,7 +55,8 @@ export function cmsCacheTag(slug) {
  * @returns {Promise<ContentResponse>}
  */
 export async function getCmsContent(config, slug, options) {
-  const accessToken = options?.accessToken ?? await getClientCredentialsToken();
+  const getServiceToken = config.getServiceToken ?? noServiceToken;
+  const accessToken = options?.accessToken ?? (await getServiceToken());
   const transport = config.transport ?? createRestTransport(config);
   return transport.getContent(slug, {
     accessToken,
@@ -82,8 +85,9 @@ export async function getCmsContent(config, slug, options) {
  * @returns {Promise<BlockResponse[]>}
  */
 export async function getCmsPageBlocks(config, slug, options) {
+  const getServiceToken = config.getServiceToken ?? noServiceToken;
   const accessToken =
-    options?.contentOptions?.accessToken ?? (await getClientCredentialsToken());
+    options?.contentOptions?.accessToken ?? (await getServiceToken());
 
   const globalSlug =
     config.globalSlug && config.globalSlug !== slug ? config.globalSlug : null;
@@ -132,14 +136,14 @@ export function syncCmsManifest(config, request, accessToken) {
 }
 
 /**
- * Sync all manifests in a single call - for `scripts/sync.mjs`.
+ * Sync all manifests in a single call - for build/deploy pipelines.
  *
- * Fetches a Keycloak client-credentials token once (cached in-process) and
+ * Obtains a service token once via `getServiceToken` (default: none) and
  * calls `POST /cms/sync` for every manifest. Logs results to console.
  * Throws if any manifest fails.
  *
  * @param {SyncManifestRequest[]} manifests
- * @param {{ baseUrl?: string }} [options]
+ * @param {{ baseUrl?: string, getServiceToken?: ServiceTokenProvider }} [options]
  * @returns {Promise<void>}
  */
 export async function syncAll(manifests, options) {
@@ -147,10 +151,11 @@ export async function syncAll(manifests, options) {
     baseUrl: options?.baseUrl ?? process.env.CMS_URL ?? "http://localhost:5000",
   };
   const transport = createRestTransport(config);
+  const getServiceToken = options?.getServiceToken ?? noServiceToken;
 
   let accessToken = "";
   try {
-    accessToken = await getClientCredentialsToken();
+    accessToken = await getServiceToken();
   } catch (err) {
     throw new Error(
       `[cms-sync] Failed to obtain service token: ${err instanceof Error ? err.message : String(err)}`,

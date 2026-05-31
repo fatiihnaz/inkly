@@ -14,6 +14,7 @@
 
 /**
  * @import { CmsTransport } from "./transport.js"
+ * @import { ServiceTokenProvider } from "./service-token.js"
  */
 
 /**
@@ -31,6 +32,11 @@
  *   (it isn't serializable); the client provider augments it in and server
  *   helpers default it to the REST adapter. Present on the config the core
  *   actually reads at runtime.
+ * @property {ServiceTokenProvider} [getServiceToken]
+ *   Server-only seam (see `service-token.js`). Not set by `createCmsConfig`;
+ *   `createCmsPage` augments it onto the server-fetch config and server read
+ *   helpers default it to `noServiceToken` (no token). Never crosses to the
+ *   client - it may hold secrets.
  */
 
 /**
