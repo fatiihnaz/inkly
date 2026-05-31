@@ -7,9 +7,6 @@ export default defineConfig({
     actions: "src/server/actions.js",
     page: "src/server/cms-page.jsx",
     "cli-sync": "src/cli/sync.js",
-    "auth-server": "src/auth/server/index.js",
-    "auth-server-signin": "src/auth/server/signin.js",
-    "auth-client": "src/auth/client/index.jsx",
   },
   format: ["esm"],
   splitting: true,
@@ -19,8 +16,7 @@ export default defineConfig({
   // and the discover helper. Leave them external so tsup doesn't bundle them
   // (would explode dist size and break the @babel/traverse interop trick).
   external: [
-    "react", "react-dom", "next", "next-auth",
-    "server-only", "client-only",
+    "react", "react-dom", "next",
     "@babel/parser", "@babel/traverse",
   ],
 });
