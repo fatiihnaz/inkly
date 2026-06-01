@@ -13,11 +13,11 @@ export default defineConfig({
   splitting: true,
   sourcemap: true,
   clean: true,
-  // Babel parser/traverse: heavy CJS modules used only by the cms-sync CLI
-  // and the discover helper. Leave them external so tsup doesn't bundle them
-  // (would explode dist size and break the @babel/traverse interop trick).
+  // oxc-parser: native (napi) parser used only by the cms-sync CLI and the
+  // discover helper. Must stay external - tsup can't bundle the platform
+  // binary, and it's resolved from the consumer's node_modules at runtime.
   external: [
     "react", "react-dom", "next",
-    "@babel/parser", "@babel/traverse",
+    "oxc-parser",
   ],
 });

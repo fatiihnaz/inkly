@@ -61,15 +61,14 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@babel/parser": "^7.25.0",
-    "@babel/traverse": "^7.25.0",
     "@tiptap/extension-link": "^2.10.0",
     "@tiptap/pm": "^2.10.0",
     "@tiptap/react": "^2.10.0",
     "@tiptap/starter-kit": "^2.10.0",
     "framer-motion": "^11.11.0",
     "isomorphic-dompurify": "^2.18.0",
-    "lucide-react": "^1.14.0"
+    "lucide-react": "^1.14.0",
+    "oxc-parser": "^0.134.0"
   },
   "peerDependencies": {
     "next": "^14.0.0 || ^15.0.0",

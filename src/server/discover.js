@@ -4,8 +4,8 @@
  * call sites. Same shape the legacy hand-written `cms.manifest.mjs` had.
  *
  * SERVER ONLY - exposed via `inkly/server` and used by the
- * `cms-sync` CLI. Not safe to import from a client component (pulls in
- * Babel at runtime).
+ * `cms-sync` CLI. Not safe to import from a client component (pulls in the
+ * native `oxc-parser` at runtime).
  *
  * Discovery rules:
  *
@@ -34,12 +34,7 @@ import { existsSync, statSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import { parse } from "@babel/parser";
-import _traverse from "@babel/traverse";
-
-// @babel/traverse is published as CommonJS; the ESM default-export shape
-// flips between bundlers, so coalesce both possibilities.
-const traverse = typeof _traverse === "function" ? _traverse : _traverse.default;
+import { parseSync } from "oxc-parser";
 
 /**
  * @import { SyncManifestRequest, ManifestBlockItem, BlockType } from "../lib/schemas.js"
@@ -48,9 +43,15 @@ const traverse = typeof _traverse === "function" ? _traverse : _traverse.default
 const SOURCE_EXTENSIONS = [".jsx", ".js", ".tsx", ".ts"];
 const INDEX_FILES = SOURCE_EXTENSIONS.map((ext) => `index${ext}`);
 
-const PARSER_OPTIONS = {
-  sourceType: "module",
-  plugins: ["jsx", "typescript", "topLevelAwait"],
+// oxc infers the dialect from `lang`. `.ts` stays TypeScript-only so
+// angle-bracket type assertions parse correctly; every other extension allows
+// JSX, matching Next.js where `.js` files routinely contain JSX.
+/** @type {Record<string, "jsx" | "tsx" | "ts">} */
+const LANG_BY_EXT = {
+  ".jsx": "jsx",
+  ".js": "jsx",
+  ".tsx": "tsx",
+  ".ts": "ts",
 };
 
 const UNRESOLVED = Symbol("unresolved");
@@ -270,17 +271,18 @@ function isDirectory(p) {
  */
 async function analyzeFile(filePath) {
   const source = await readFile(filePath, "utf8");
+  const lang = LANG_BY_EXT[path.extname(filePath)] ?? "jsx";
 
-  let ast;
-  try {
-    ast = parse(source, PARSER_OPTIONS);
-  } catch (err) {
+  const { program, errors } = parseSync(filePath, source, { lang });
+  if (errors.length > 0) {
     throw new Error(
-      `[cms-discover] Failed to parse ${path.relative(process.cwd(), filePath)}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[cms-discover] Failed to parse ${path.relative(process.cwd(), filePath)}: ${errors[0].message}`,
     );
   }
+
+  // oxc spans are character offsets (UTF-16, i.e. JS string indices); the
+  // locator turns them into Babel-style { line (1-based), column (0-based) }.
+  const locator = makeLocator(source);
 
   /** @type {FileAnalysis} */
   const analysis = {
@@ -301,104 +303,108 @@ async function analyzeFile(filePath) {
   const groupStack = [];
   const currentPrefix = () => groupStack.filter(Boolean).join(".");
 
-  traverse(ast, {
-    ImportDeclaration(p) {
-      const resolved = resolveImport(filePath, p.node.source.value);
-      if (resolved) analysis.imports.push(resolved);
-    },
-    JSXElement: {
-      enter(p) {
-        const opening = p.node.openingElement;
-        if (opening.name.type !== "JSXIdentifier") return;
-        if (opening.name.name !== "CmsGroup") return;
-        const props = readJsxProps(opening);
-        if (typeof props.name !== "string") {
-          warnings.push({
-            file: filePath,
-            loc: locOf(opening),
-            message:
-              "<CmsGroup> needs a static string `name` prop. Treating as a transparent wrapper - blockPaths inside won't be prefixed.",
-          });
-          groupStack.push(""); // placeholder so exit() pops the matching push
+  // Single enter/leave pass mirroring the four former Babel visitors.
+  // `<CmsGroup>` push/pop straddles JSXElement enter/leave so the prefix is
+  // active for every descendant region, just as the runtime context is.
+  walk(program, {
+    enter(node) {
+      switch (node.type) {
+        case "ImportDeclaration": {
+          const resolved = resolveImport(filePath, node.source.value);
+          if (resolved) analysis.imports.push(resolved);
           return;
         }
-        groupStack.push(props.name);
-      },
-      exit(p) {
-        const opening = p.node.openingElement;
-        if (opening.name.type !== "JSXIdentifier") return;
-        if (opening.name.name !== "CmsGroup") return;
+        case "JSXElement": {
+          const opening = node.openingElement;
+          if (opening.name.type !== "JSXIdentifier" || opening.name.name !== "CmsGroup") return;
+          const props = readJsxProps(opening);
+          if (typeof props.name !== "string") {
+            warnings.push({
+              file: filePath,
+              loc: locOf(opening, locator),
+              message:
+                "<CmsGroup> needs a static string `name` prop. Treating as a transparent wrapper - blockPaths inside won't be prefixed.",
+            });
+            groupStack.push(""); // placeholder so leave() pops the matching push
+            return;
+          }
+          groupStack.push(props.name);
+          return;
+        }
+        case "CallExpression": {
+          const callee = node.callee;
+          if (callee.type !== "Identifier") return;
+
+          if (callee.name === "withCms") {
+            const slug = literalString(node.arguments[0]);
+            if (slug == null) {
+              warnings.push({
+                file: filePath,
+                loc: locOf(node, locator),
+                message:
+                  "withCms() called with a non-literal slug - skipping. Pass a string literal so the manifest discovery can statically resolve it.",
+              });
+              return;
+            }
+            analysis.withCmsSlugs.push(slug);
+            return;
+          }
+
+          // useCmsBlock("path", { blockType, defaultValue }) - read-only block
+          // declaration. The 2nd arg is metadata; without it we can't register
+          // the block, so the call is treated as a pure read and ignored.
+          if (callee.name === "useCmsBlock") {
+            const blockPath = literalString(node.arguments[0]);
+            if (blockPath == null) return;
+            const metaNode = node.arguments[1];
+            if (!metaNode) return;
+            const meta = evalLiteral(metaNode);
+            if (meta === UNRESOLVED || meta === null || typeof meta !== "object") {
+              warnings.push({
+                file: filePath,
+                loc: locOf(node, locator),
+                message: `useCmsBlock("${blockPath}", ...) metadata must be a static object literal. Skipping.`,
+              });
+              return;
+            }
+            if (typeof meta.blockType !== "string" || !("defaultValue" in meta)) {
+              warnings.push({
+                file: filePath,
+                loc: locOf(node, locator),
+                message: `useCmsBlock("${blockPath}", ...) metadata is missing blockType or defaultValue. Skipping.`,
+              });
+              return;
+            }
+            analysis.regions.push({
+              blockPath,
+              blockType: /** @type {BlockType} */ (meta.blockType),
+              defaultValue: meta.defaultValue,
+            });
+          }
+          return;
+        }
+        case "JSXOpeningElement": {
+          const name = node.name;
+          if (name.type !== "JSXIdentifier") return;
+          if (name.name === "EditableRegion") {
+            handleEditableRegion(node, filePath, analysis, warnings, currentPrefix(), locator);
+          } else if (name.name === "EditableList") {
+            handleEditableList(node, filePath, analysis, warnings, currentPrefix(), locator);
+          }
+          // `<CollectionRegion>` and `<CollectionItem>` deliberately don't
+          // emit manifest blocks - Collection bindings live in a runtime
+          // registry (CmsContext.collectionBindings) so they aren't mixed
+          // into the CMS block namespace. See CmsProvider.
+          return;
+        }
+      }
+    },
+    leave(node) {
+      if (node.type !== "JSXElement") return;
+      const opening = node.openingElement;
+      if (opening.name.type === "JSXIdentifier" && opening.name.name === "CmsGroup") {
         groupStack.pop();
-      },
-    },
-    CallExpression(p) {
-      const callee = p.node.callee;
-      if (callee.type !== "Identifier") return;
-
-      if (callee.name === "withCms") {
-        const slug = literalString(p.node.arguments[0]);
-        if (slug == null) {
-          warnings.push({
-            file: filePath,
-            loc: locOf(p.node),
-            message:
-              "withCms() called with a non-literal slug - skipping. Pass a string literal so the manifest discovery can statically resolve it.",
-          });
-          return;
-        }
-        analysis.withCmsSlugs.push(slug);
-        return;
       }
-
-      // useCmsBlock("path", { blockType, defaultValue }) - read-only block
-      // declaration. The 2nd arg is metadata; without it we can't register
-      // the block, so the call is treated as a pure read and ignored.
-      if (callee.name === "useCmsBlock") {
-        const blockPath = literalString(p.node.arguments[0]);
-        if (blockPath == null) return;
-        const metaNode = p.node.arguments[1];
-        if (!metaNode) return;
-        const meta = evalLiteral(metaNode);
-        if (meta === UNRESOLVED || meta === null || typeof meta !== "object") {
-          warnings.push({
-            file: filePath,
-            loc: locOf(p.node),
-            message: `useCmsBlock("${blockPath}", ...) metadata must be a static object literal. Skipping.`,
-          });
-          return;
-        }
-        if (typeof meta.blockType !== "string" || !("defaultValue" in meta)) {
-          warnings.push({
-            file: filePath,
-            loc: locOf(p.node),
-            message: `useCmsBlock("${blockPath}", ...) metadata is missing blockType or defaultValue. Skipping.`,
-          });
-          return;
-        }
-        analysis.regions.push({
-          blockPath,
-          blockType: /** @type {BlockType} */ (meta.blockType),
-          defaultValue: meta.defaultValue,
-        });
-        return;
-      }
-    },
-    JSXOpeningElement(p) {
-      const name = p.node.name;
-      if (name.type !== "JSXIdentifier") return;
-
-      if (name.name === "EditableRegion") {
-        handleEditableRegion(p.node, filePath, analysis, warnings, currentPrefix());
-        return;
-      }
-      if (name.name === "EditableList") {
-        handleEditableList(p.node, filePath, analysis, warnings, currentPrefix());
-        return;
-      }
-      // `<CollectionRegion>` and `<CollectionItem>` deliberately don't
-      // emit manifest blocks - Collection bindings live in a runtime
-      // registry (CmsContext.collectionBindings) so they aren't mixed
-      // into the CMS block namespace. See CmsProvider.
     },
   });
 
@@ -418,8 +424,9 @@ async function analyzeFile(filePath) {
  * @param {FileAnalysis} analysis
  * @param {DiscoveryWarning[]} warnings
  * @param {string} groupPrefix
+ * @param {Locator} locator
  */
-function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPrefix) {
+function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPrefix, locator) {
   const props = readJsxProps(openingNode);
   const rawBlockPath = props.blockPath;
   const blockType = props.blockType;
@@ -428,7 +435,7 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPr
   if (typeof rawBlockPath !== "string") {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message:
         "<EditableRegion> needs a static blockPath string. Skipping discovery for this region.",
     });
@@ -439,7 +446,7 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPr
   if (typeof blockType !== "string") {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message: `<EditableRegion blockPath="${blockPath}"> is missing a static blockType prop. Skipping.`,
     });
     return;
@@ -447,7 +454,7 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPr
   if (!hasDefault) {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message: `<EditableRegion blockPath="${blockPath}"> is missing a static defaultValue prop. Skipping.`,
     });
     return;
@@ -459,7 +466,7 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPr
     blockType: /** @type {BlockType} */ (blockType),
     defaultValue: props.defaultValue,
   };
-  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings, locator);
   if (scope) region.scope = scope;
   analysis.regions.push(region);
 }
@@ -479,8 +486,9 @@ function handleEditableRegion(openingNode, filePath, analysis, warnings, groupPr
  * @param {FileAnalysis} analysis
  * @param {DiscoveryWarning[]} warnings
  * @param {string} groupPrefix
+ * @param {Locator} locator
  */
-function handleEditableList(openingNode, filePath, analysis, warnings, groupPrefix) {
+function handleEditableList(openingNode, filePath, analysis, warnings, groupPrefix, locator) {
   const props = readJsxProps(openingNode);
   const rawBlockPath = props.blockPath;
   const itemSchema = props.itemSchema;
@@ -488,7 +496,7 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
   if (typeof rawBlockPath !== "string") {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message:
         "<EditableList> needs a static blockPath string. Skipping discovery for this list.",
     });
@@ -498,7 +506,7 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
   if (!isValidItemSchema(itemSchema)) {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message: `<EditableList blockPath="${blockPath}"> is missing or has a non-static itemSchema. Each field must be a plain object with literal blockType + defaultValue.`,
     });
     return;
@@ -511,7 +519,7 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
   if (!Array.isArray(defaultValue)) {
     warnings.push({
       file: filePath,
-      loc: locOf(openingNode),
+      loc: locOf(openingNode, locator),
       message: `<EditableList blockPath="${blockPath}"> defaultValue must be an array. Skipping.`,
     });
     return;
@@ -524,7 +532,7 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
     defaultValue,
     itemSchema,
   };
-  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings);
+  const scope = readScopeProp(props, openingNode, blockPath, filePath, warnings, locator);
   if (scope) region.scope = scope;
   analysis.regions.push(region);
 }
@@ -539,15 +547,16 @@ function handleEditableList(openingNode, filePath, analysis, warnings, groupPref
  * @param {string} blockPath
  * @param {string} filePath
  * @param {DiscoveryWarning[]} warnings
+ * @param {Locator} locator
  * @returns {string | null}
  */
-function readScopeProp(props, openingNode, blockPath, filePath, warnings) {
+function readScopeProp(props, openingNode, blockPath, filePath, warnings, locator) {
   if (!Object.prototype.hasOwnProperty.call(props, "scope")) return null;
   const scope = props.scope;
   if (scope === "global") return "global";
   warnings.push({
     file: filePath,
-    loc: locOf(openingNode),
+    loc: locOf(openingNode, locator),
     message: `<EditableRegion blockPath="${blockPath}"> has unsupported scope=${JSON.stringify(scope)}. Treating as page-scoped. Only "global" is recognized today.`,
   });
   return null;
@@ -574,7 +583,7 @@ function isValidItemSchema(value) {
  * @returns {string | null}
  */
 function literalString(node) {
-  if (node && node.type === "StringLiteral") return node.value;
+  if (node && node.type === "Literal" && typeof node.value === "string") return node.value;
   return null;
 }
 
@@ -599,7 +608,7 @@ function readJsxProps(opening) {
  */
 function readJsxAttrValue(node) {
   if (node == null) return true;
-  if (node.type === "StringLiteral") return node.value;
+  if (node.type === "Literal") return node.value;
   if (node.type === "JSXExpressionContainer") return evalLiteral(node.expression);
   return UNRESOLVED;
 }
@@ -611,10 +620,11 @@ function readJsxAttrValue(node) {
 function evalLiteral(node) {
   if (!node) return UNRESOLVED;
   switch (node.type) {
-    case "StringLiteral":  return node.value;
-    case "NumericLiteral": return node.value;
-    case "BooleanLiteral": return node.value;
-    case "NullLiteral":    return null;
+    case "Literal":
+      // RegExp / BigInt literals carry extra fields and aren't plain JSON
+      // values; treat them as unresolved (Babel never evaluated them either).
+      if (node.regex || node.bigint) return UNRESOLVED;
+      return node.value;
     case "TemplateLiteral":
       if (node.expressions.length === 0) return node.quasis[0].value.cooked;
       return UNRESOLVED;
@@ -627,10 +637,10 @@ function evalLiteral(node) {
       /** @type {Record<string, *>} */
       const obj = {};
       for (const prop of node.properties) {
-        if (prop.type !== "ObjectProperty") return UNRESOLVED;
+        if (prop.type !== "Property") return UNRESOLVED;
         const key =
-          prop.key.type === "Identifier"   ? prop.key.name :
-          prop.key.type === "StringLiteral" ? prop.key.value :
+          prop.key.type === "Identifier" ? prop.key.name :
+          prop.key.type === "Literal" && typeof prop.key.value === "string" ? prop.key.value :
           null;
         if (key == null) return UNRESOLVED;
         const value = evalLiteral(prop.value);
@@ -656,9 +666,72 @@ function evalLiteral(node) {
 
 /**
  * @param {*} node
+ * @param {Locator} locator
  * @returns {{ line: number, column: number } | null}
  */
-function locOf(node) {
-  if (!node || !node.loc) return null;
-  return { line: node.loc.start.line, column: node.loc.start.column };
+function locOf(node, locator) {
+  if (!node || typeof node.start !== "number") return null;
+  return locator(node.start);
+}
+
+/**
+ * @typedef {(offset: number) => { line: number, column: number }} Locator
+ */
+
+/**
+ * Build an offset -> { line, column } mapper for one source string. Lines are
+ * 1-based and columns 0-based, matching the `loc` Babel produced so warning
+ * positions are byte-for-byte unchanged. Offsets are UTF-16 (JS string
+ * indices), which is exactly what oxc emits.
+ *
+ * @param {string} source
+ * @returns {Locator}
+ */
+function makeLocator(source) {
+  /** @type {number[]} */
+  const lineStarts = [0];
+  for (let i = 0; i < source.length; i++) {
+    if (source.charCodeAt(i) === 10 /* \n */) lineStarts.push(i + 1);
+  }
+  return (offset) => {
+    // Greatest line start <= offset (binary search).
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return { line: lo + 1, column: offset - lineStarts[lo] };
+  };
+}
+
+/**
+ * @typedef {Object} Visitors
+ * @property {(node: any) => void} enter
+ * @property {(node: any) => void} [leave]
+ */
+
+/**
+ * Minimal depth-first walk over the plain-object ESTree AST oxc returns. A
+ * node is any object with a string `type`; children live in node-valued or
+ * array-valued properties. This replaces `@babel/traverse` - we only need
+ * enter/leave in source order, not its scope/path machinery.
+ *
+ * @param {any} node
+ * @param {Visitors} visitors
+ */
+function walk(node, visitors) {
+  if (node === null || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const child of node) walk(child, visitors);
+    return;
+  }
+  if (typeof node.type !== "string") return;
+  visitors.enter(node);
+  for (const key in node) {
+    if (key === "type" || key === "start" || key === "end") continue;
+    walk(node[key], visitors);
+  }
+  if (visitors.leave) visitors.leave(node);
 }
