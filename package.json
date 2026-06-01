@@ -1,6 +1,6 @@
 {
   "name": "inkly",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Inline-editing CMS SDK for Next.js App Router projects",
   "keywords": [
     "cms",

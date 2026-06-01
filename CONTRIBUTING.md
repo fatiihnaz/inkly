@@ -87,9 +87,10 @@ src/
     discover.js         #   AST manifest discovery
   cli/
     sync.js             #   `cms-sync` binary
+  tests/                # Vitest specs + discovery fixtures & snapshots
 ```
 
-Tests are colocated as `*.test.js` next to the module they cover.
+Tests live under `src/tests/` as `*.test.js` (fixtures in `src/tests/__fixtures__/`).
 
 ## Build
 
@@ -123,8 +124,9 @@ bundling — only the **entry file's top-level directive survives**. Consequence
   of importing them — importing a `"use client"` provider or `"use server"` action
   into the server entry would strip its directive during bundling.
 
-`react`, `react-dom`, `next`, and the heavy `@babel/*` parser deps are marked
-`external` so they aren't bundled.
+`react`, `react-dom`, `next`, and the native `oxc-parser` are marked
+`external` so they aren't bundled (tsup can't bundle the platform binary; it's
+resolved from the consumer's `node_modules` at runtime).
 
 ## Type declarations
 
@@ -149,7 +151,7 @@ npm test           # run once
 npm run test:watch # watch mode
 ```
 
-- Place tests as `src/**/*.test.js`, colocated with the module under test.
+- Place tests under `src/tests/` as `*.test.js`.
 - Keep tests in the Node environment unless you're testing a component/hook, in
   which case add an `environment: "jsdom"` override for that file.
 - Cover new `lib/` logic and any new `CmsTransport` method against the contract.
@@ -194,7 +196,7 @@ headers (`X-CMS-Client-Id`), and `CmsApiError` mapping.
 1. Add the method signature to the `CmsTransport` typedef in `src/lib/transport.js`.
 2. Implement it in `src/defaults/transport.js` (the REST adapter).
 3. Call it from the relevant hook/component/server helper via `config.transport`.
-4. Add a contract test under `src/defaults/transport.test.js`.
+4. Add a contract test in `src/tests/transport.test.js`.
 
 Keep the method's options shape consistent: `(…, opts?)` where `opts` is
 `{ accessToken?, cache?, signal? }`.
