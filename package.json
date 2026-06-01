@@ -2,6 +2,28 @@
   "name": "inkly",
   "version": "0.1.0",
   "description": "Inline-editing CMS SDK for Next.js App Router projects",
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "nextjs",
+    "next",
+    "react",
+    "app-router",
+    "inline-editing",
+    "content-management",
+    "tiptap",
+    "sdk"
+  ],
+  "homepage": "https://github.com/fatiihnaz/inkly#readme",
+  "bugs": {
+    "url": "https://github.com/fatiihnaz/inkly/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fatiihnaz/inkly.git"
+  },
+  "license": "LGPL-3.0-or-later",
+  "author": "Fatih Naz <fatiihnaz@gmail.com>",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +49,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "COPYING"
   ],
   "scripts": {
     "build": "tsup",
