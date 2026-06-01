@@ -9,6 +9,7 @@ export default defineConfig({
     "cli-sync": "src/cli/sync.js",
   },
   format: ["esm"],
+  dts: true,
   splitting: true,
   sourcemap: true,
   clean: true,
