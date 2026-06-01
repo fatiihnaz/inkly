@@ -135,7 +135,7 @@ export function ImageEditor({ value, onChange }) {
             {/* Replace button */}
             <button
               type="button"
-              className="inkly-img-replace"
+              className="inscribed-img-replace"
               onClick={() => inputRef.current?.click()}
               style={{
                 position: "absolute",
@@ -296,7 +296,7 @@ export function ImageEditor({ value, onChange }) {
           value={src}
           onChange={(e) => patch({ src: e.target.value })}
           placeholder="https://..."
-          className="inkly-field"
+          className="inscribed-field"
           style={fieldStyle}
         />
       </label>
@@ -308,7 +308,7 @@ export function ImageEditor({ value, onChange }) {
           type="text"
           value={alt}
           onChange={(e) => patch({ alt: e.target.value })}
-          className="inkly-field"
+          className="inscribed-field"
           style={fieldStyle}
         />
       </label>

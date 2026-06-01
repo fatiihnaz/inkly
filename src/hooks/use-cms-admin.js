@@ -100,7 +100,7 @@ export function useCmsAdmin() {
             await onAfterSave(slug);
           } catch (revalidateErr) {
             // eslint-disable-next-line no-console
-            console.warn("[inkly] onAfterSave failed:", revalidateErr);
+            console.warn("[inscribed] onAfterSave failed:", revalidateErr);
           }
         }
         return result;

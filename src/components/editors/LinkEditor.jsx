@@ -32,7 +32,7 @@ export function LinkEditor({ value, onChange }) {
           type="text"
           value={label}
           onChange={(e) => patch({ label: e.target.value })}
-          className="inkly-field"
+          className="inscribed-field"
           style={fieldStyle}
         />
       </label>
@@ -43,7 +43,7 @@ export function LinkEditor({ value, onChange }) {
           value={href}
           onChange={(e) => patch({ href: e.target.value })}
           placeholder="https://..."
-          className="inkly-field"
+          className="inscribed-field"
           style={fieldStyle}
         />
       </label>

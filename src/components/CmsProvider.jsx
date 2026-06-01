@@ -592,7 +592,7 @@ export function CmsProvider({
           // log noise but surface the error on the entry.
           if (!(err && /** @type {*} */ (err).isNotFound)) {
             // eslint-disable-next-line no-console
-            console.error(`[inkly] fetchCollectionItem(${key}/${slug}) failed:`, err);
+            console.error(`[inscribed] fetchCollectionItem(${key}/${slug}) failed:`, err);
           }
           setCollectionItemCache((prev) => {
             const next = new Map(prev);
@@ -687,7 +687,7 @@ export function CmsProvider({
           });
         } catch (err) {
           // eslint-disable-next-line no-console
-          console.error(`[inkly] fetchCollection(${key}) failed:`, err);
+          console.error(`[inscribed] fetchCollection(${key}) failed:`, err);
           setCollectionListCache((prev) => {
             const next = new Map(prev);
             const prior = prev.get(cacheKey);
@@ -734,7 +734,7 @@ export function CmsProvider({
       } catch (err) {
         if (cancelled) return;
         // eslint-disable-next-line no-console
-        console.error("[inkly] fetchMyCollections failed:", err);
+        console.error("[inscribed] fetchMyCollections failed:", err);
         setMyCollectionsState({ data: [], isLoading: false, error: /** @type {Error} */ (err) });
       }
     })();
@@ -906,7 +906,7 @@ export function CmsProvider({
         for (const r of results) {
           if (r.status === "rejected") {
             // eslint-disable-next-line no-console
-            console.warn("[inkly] draft autosave failed:", r.reason);
+            console.warn("[inscribed] draft autosave failed:", r.reason);
           }
         }
         flashDraftStatus("failed");
@@ -989,7 +989,7 @@ export function CmsProvider({
             )
             .catch((err) => {
               // eslint-disable-next-line no-console
-              console.warn("[inkly] discard cleanup PUT failed:", err);
+              console.warn("[inscribed] discard cleanup PUT failed:", err);
             });
           inFlightDraftPerSlug.current.set(slug, next);
         }

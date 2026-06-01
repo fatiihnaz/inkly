@@ -618,14 +618,14 @@ export function AdminDrawer() {
         <button
           type="button"
           onClick={() => setDrawerOpen(!isDrawerOpen)}
-          className="inkly-handle"
+          className="inscribed-handle"
           style={handleButtonStyle}
           aria-label={isDrawerOpen ? "Paneli kapat" : "Paneli aç"}
           aria-expanded={isDrawerOpen}
           title={isDrawerOpen ? "Paneli kapat" : "Paneli aç"}
         >
           <span
-            className="inkly-handle-slide"
+            className="inscribed-handle-slide"
             style={{
               ...handleIconStyle,
               "--slide-x": isDrawerOpen ? "-3px" : "3px",
@@ -793,7 +793,7 @@ function HeaderStatusPill({ dirty, draftSyncStatus, isSaving, lastSavedAt, publi
       title={view.title}
     >
       <span
-        className={view.pulse ? "inkly-status-pulse" : undefined}
+        className={view.pulse ? "inscribed-status-pulse" : undefined}
         style={{ ...headerPillDotStyle, background: view.bg, boxShadow: view.glow }}
       />
       <AnimatePresence mode="popLayout" initial={false}>
@@ -915,7 +915,7 @@ function TabBar({ tabs, activeTab, onChange }) {
         <button
           type="button"
           onClick={() => nudge(-1)}
-          className="inkly-tabbar-chevron"
+          className="inscribed-tabbar-chevron"
           style={tabBarChevronStyle}
           aria-label="Önceki sekmeler"
         >
@@ -925,7 +925,7 @@ function TabBar({ tabs, activeTab, onChange }) {
       <div
         ref={scrollRef}
         role="tablist"
-        className="inkly-tabbar-scroll"
+        className="inscribed-tabbar-scroll"
         style={{ ...tabBarScrollStyle, position: "relative" }}
         onScroll={measure}
       >
@@ -961,7 +961,7 @@ function TabBar({ tabs, activeTab, onChange }) {
         <button
           type="button"
           onClick={() => nudge(1)}
-          className="inkly-tabbar-chevron"
+          className="inscribed-tabbar-chevron"
           style={tabBarChevronStyle}
           aria-label="Sonraki sekmeler"
         >
@@ -994,7 +994,7 @@ function TabButton({ id, label, count, active, dirty, onClick }) {
       data-tab-id={id}
       aria-selected={active}
       onClick={onClick}
-      className="inkly-tab"
+      className="inscribed-tab"
       style={activeStyle}
     >
       <span style={tabLabelStyle}>{label}</span>
@@ -1025,7 +1025,7 @@ function TabButton({ id, label, count, active, dirty, onClick }) {
 function Toolbar({ value, onChange }) {
   return (
     <div style={toolbarStyle}>
-      <div className="inkly-search" style={searchWrapStyle}>
+      <div className="inscribed-search" style={searchWrapStyle}>
         <Search size={13} color={TEXT_FAINT} />
         <input
           type="search"
@@ -1039,7 +1039,7 @@ function Toolbar({ value, onChange }) {
           <button
             type="button"
             onClick={() => onChange("")}
-            className="inkly-search-clear"
+            className="inscribed-search-clear"
             style={searchClearStyle}
             aria-label="Temizle"
           >
@@ -1254,7 +1254,7 @@ function PreviewHeader({ count, onBack }) {
       <button
         type="button"
         onClick={onBack}
-        className="inkly-preview-back"
+        className="inscribed-preview-back"
         style={previewBackStyle}
         aria-label="Düzenlemeye dön"
       >
@@ -1421,7 +1421,7 @@ function StatusBar({
     <div style={statusBarStyle}>
       <div style={statusSignalStyle}>
         <span
-          className={dotPulse ? "inkly-status-pulse" : undefined}
+          className={dotPulse ? "inscribed-status-pulse" : undefined}
           style={{ ...statusDotStyle, ...dotBackground }}
         />
         {msg}
@@ -1433,7 +1433,7 @@ function StatusBar({
               key="preview"
               type="button"
               onClick={onTogglePreview}
-              className="inkly-btn-ghost"
+              className="inscribed-btn-ghost"
               style={btnGhostStyle}
               aria-label={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
               title={isPreviewOpen ? "Düzenlemeye dön" : "Değişiklikleri önizle"}
@@ -1450,7 +1450,7 @@ function StatusBar({
               type="button"
               onClick={onDiscardAll}
               disabled={isSaving}
-              className="inkly-btn-ghost"
+              className="inscribed-btn-ghost"
               style={btnGhostStyle}
               aria-label="Tüm değişiklikleri iptal et"
               title="Tüm değişiklikleri iptal et"
@@ -1465,7 +1465,7 @@ function StatusBar({
               type="button"
               onClick={onSaveAll}
               disabled={isSaving}
-              className="inkly-btn-primary"
+              className="inscribed-btn-primary"
               style={btnPrimaryStyle}
               aria-label="Tümünü kaydet"
               title="Tümünü kaydet"
@@ -1480,7 +1480,7 @@ function StatusBar({
               key="open-collection"
               type="button"
               onClick={() => onGoToCollection(firstDirtyCollectionTarget)}
-              className="inkly-btn-primary"
+              className="inscribed-btn-primary"
               style={{ ...btnPrimaryStyle, background: COLLECTION_ACCENT, color: "#241c25" }}
               aria-label={`${firstDirtyCollectionTarget.key} / ${firstDirtyCollectionTarget.slug} kaydını aç`}
               title={`${firstDirtyCollectionTarget.key} / ${firstDirtyCollectionTarget.slug} kaydını aç`}
@@ -1537,7 +1537,7 @@ function PanelFooter({ userInfo, onSignOut }) {
         type="button"
         onClick={onSignOut ?? undefined}
         disabled={!onSignOut}
-        className="inkly-logout"
+        className="inscribed-logout"
         style={signOutButtonStyle}
         aria-label="Çıkış yap"
         title="Çıkış yap"

@@ -1,4 +1,4 @@
-import { withCms } from "inkly";
+import { withCms } from "inscribed";
 import Shared from "./components/Shared";
 
 function About() {

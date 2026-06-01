@@ -10,7 +10,7 @@
  * To enable editing, supply your own adapter. The auth library (next-auth,
  * Auth.js, Clerk, Lucia, ...) and identity provider (Keycloak, ...) are the
  * consumer's choice - the core depends on none of them. For NextAuth,
- * `withCmsAuth(authOptions)` from `inkly/auth/server` builds an adapter
+ * `withCmsAuth(authOptions)` from `inscribed/auth/server` builds an adapter
  * for you.
  */
 

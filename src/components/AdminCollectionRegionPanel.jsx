@@ -208,7 +208,7 @@ function RegionSection({ collectionKey, filter, pageLimit, pageOffset, showHeade
           <button
             type="button"
             onClick={refetch}
-            className="inkly-text-button"
+            className="inscribed-text-button"
             style={retryTextStyle}
           >
             Yeniden dene
@@ -237,7 +237,7 @@ function RegionSection({ collectionKey, filter, pageLimit, pageOffset, showHeade
           type="button"
           onClick={loadMore}
           disabled={isLoading}
-          className="inkly-load-more"
+          className="inscribed-load-more"
           style={loadMoreStyle}
         >
           {isLoading ? "Yükleniyor…" : `Daha fazla yükle (${remaining} kalan)`}
@@ -284,7 +284,7 @@ function RegionItemCard({ collectionKey, slug, canEdit }) {
 
   return (
     <div
-      className={`inkly-block-card inkly-block-card-collection${isDirty ? " is-dirty" : ""}${isOpen ? " inkly-block-card-collection-active" : ""}`}
+      className={`inscribed-block-card inscribed-block-card-collection${isDirty ? " is-dirty" : ""}${isOpen ? " inscribed-block-card-collection-active" : ""}`}
       style={blockCardStyle}
     >
       <button
@@ -325,7 +325,7 @@ function RegionItemCard({ collectionKey, slug, canEdit }) {
                 editor.undoDraft();
               }
             }}
-            className="inkly-icon-button"
+            className="inscribed-icon-button"
             style={blockResetStyle}
             aria-label="Bu kaydın değişikliklerini geri al"
             title="Geri al"
@@ -349,7 +349,7 @@ function RegionItemCard({ collectionKey, slug, canEdit }) {
       </button>
 
       <div
-        className={`inkly-collapse${isOpen ? " is-open" : ""}`}
+        className={`inscribed-collapse${isOpen ? " is-open" : ""}`}
         aria-hidden={!isOpen}
       >
         <div style={blockBodyStyle}>
@@ -452,7 +452,7 @@ function CreateForm({ collectionKey, schema }) {
       } catch (err) {
         if (cancelled) return;
         // eslint-disable-next-line no-console
-        console.warn("[inkly] collection new-draft autosave failed:", err);
+        console.warn("[inscribed] collection new-draft autosave failed:", err);
         flashDraftStatus("failed");
       }
     }, DRAFT_DEBOUNCE_MS);
@@ -506,7 +506,7 @@ function CreateForm({ collectionKey, schema }) {
   };
 
   return (
-    <div className="inkly-create-card" style={createCardStyle}>
+    <div className="inscribed-create-card" style={createCardStyle}>
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
@@ -530,7 +530,7 @@ function CreateForm({ collectionKey, schema }) {
       </button>
 
       <div
-        className={`inkly-collapse${isOpen ? " is-open" : ""}`}
+        className={`inscribed-collapse${isOpen ? " is-open" : ""}`}
         aria-hidden={!isOpen}
       >
         <div style={createBodyStyle}>
@@ -555,7 +555,7 @@ function CreateForm({ collectionKey, schema }) {
                 type="button"
                 onClick={undoDraft}
                 disabled={isPending}
-                className="inkly-icon-button"
+                className="inscribed-icon-button"
                 style={blockResetStyle}
                 aria-label="Form değerlerini sıfırla"
                 title="Form değerlerini sıfırla"
@@ -568,7 +568,7 @@ function CreateForm({ collectionKey, schema }) {
               type="button"
               onClick={() => { setIsOpen(false); reset(); }}
               disabled={isPending}
-              className="inkly-btn-ghost"
+              className="inscribed-btn-ghost"
               style={btnGhostStyle}
             >
               İptal

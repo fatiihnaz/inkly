@@ -1,4 +1,4 @@
-import { withCms } from "inkly";
+import { withCms } from "inscribed";
 
 const slugVar = "/computed";
 

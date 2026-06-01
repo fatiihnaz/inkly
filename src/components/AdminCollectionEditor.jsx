@@ -239,7 +239,7 @@ export function useCollectionEditor(collection, slug) {
       } catch (err) {
         if (cancelled) return;
         // eslint-disable-next-line no-console
-        console.warn("[inkly] collection draft autosave failed:", err);
+        console.warn("[inscribed] collection draft autosave failed:", err);
         setDraftStatus("failed");
         // Surface the failed state for a few seconds, then fall back to
         // idle — the user's next keystroke retries automatically via the
@@ -337,7 +337,7 @@ export function useCollectionEditor(collection, slug) {
         );
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn("[inkly] collection undo draft cleanup failed:", err);
+        console.warn("[inscribed] collection undo draft cleanup failed:", err);
       }
     })();
   };
@@ -544,7 +544,7 @@ function DraftIndicator({ status, lastSavedAt, hasServerDraft, publishedFlash })
       style={{ ...indicatorPillStyle, transformOrigin: "center", overflow: "hidden" }}
     >
       <span
-        className={view.pulse ? "inkly-status-pulse" : undefined}
+        className={view.pulse ? "inscribed-status-pulse" : undefined}
         style={{ ...indicatorDotStyle, background: view.bg, boxShadow: view.glow }}
       />
       <AnimatePresence mode="popLayout" initial={false}>

@@ -1,4 +1,4 @@
-import { withCms } from "inkly";
+import { withCms } from "inscribed";
 import Hero from "./components/Hero";
 import Shared from "./components/Shared";
 import Wrapper from "./passthrough/Wrapper";

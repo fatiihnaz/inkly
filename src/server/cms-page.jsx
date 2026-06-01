@@ -1,13 +1,13 @@
 /**
  * @file `createCmsPage` factory - centralise per-page CMS boilerplate.
  *
- * SERVER ONLY - published under `inkly/page`.
+ * SERVER ONLY - published under `inscribed/page`.
  *
  * Define one factory call (typically `app/lib/cms.jsx`) with your config,
  * session strategy, and revalidation; afterwards every page reduces to:
  *
  *   import { CmsPage } from "../lib/cms.jsx";
- *   import { EditableRegion } from "inkly";
+ *   import { EditableRegion } from "inscribed";
  *
  *   export default function Page() {
  *     return (
@@ -36,7 +36,7 @@
  * because the header carries the concrete path, not the manifest template.
  *
  * `Provider` is passed in by the caller (rather than imported here) so the
- * `"use client"` boundary in `inkly/nextauth` (or a custom provider
+ * `"use client"` boundary in `inscribed/nextauth` (or a custom provider
  * module) stays intact - tsup does not preserve `"use client"` across entry
  * boundaries when bundling, but consumer-side imports do.
  */
@@ -68,13 +68,13 @@ const PATHNAME_HEADER = "x-pathname";
  *   (`<CmsProvider transport={...}>`). Default: REST against `config.baseUrl`.
  * @property {*} Provider
  *   The CMS provider component - typically `NextAuthCmsProvider` from
- *   `inkly/auth/client`, or your own wrapper. The provider receives
+ *   `inscribed/auth/client`, or your own wrapper. The provider receives
  *   `config`, `isAdmin`, `userSub`, `initialBlocks`, `onAfterSave`, and
  *   `session` props.
  * The three auth callbacks below together form a `CmsAuthAdapter`
  * (see `lib/auth.js`); omit them all for a public, read-only site (the
  * `publicAuth` default). For NextAuth, spread `withCmsAuth(authOptions)` from
- * `inkly/auth/server` - it supplies all three and keeps the CMS core
+ * `inscribed/auth/server` - it supplies all three and keeps the CMS core
  * itself free of any auth dependency.
  *
  * @property {import("../lib/auth.js").GetSession} [getSession]
@@ -85,7 +85,7 @@ const PATHNAME_HEADER = "x-pathname";
  *   Default: `session?.user?.id ?? null`.
  * @property {(slug: string) => void | Promise<void>} [onAfterSave]
  *   Server Action invoked after a successful admin save. Typically
- *   `revalidateCmsSlug` from `inkly/actions` - import it on the
+ *   `revalidateCmsSlug` from `inscribed/actions` - import it on the
  *   consumer side and pass it explicitly. The "use server" directive
  *   only survives across package entry boundaries, so importing the
  *   action inside this file (and using it as a default) would strip its
@@ -179,7 +179,7 @@ async function resolveSlugFromHeaders() {
   if (process.env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
     console.warn(
-      `[inkly] <CmsPage> rendered without a slug prop and no "${PATHNAME_HEADER}" ` +
+      `[inscribed] <CmsPage> rendered without a slug prop and no "${PATHNAME_HEADER}" ` +
         "request header was found. Add middleware that copies the pathname into the " +
         "request headers, or pass slug={...} explicitly. Falling back to \"/\".",
     );

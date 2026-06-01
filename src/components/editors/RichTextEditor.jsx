@@ -72,7 +72,7 @@ export function RichTextEditor({ value, onChange }) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: "inkly-rte-content",
+        class: "inscribed-rte-content",
       },
     },
     onUpdate: ({ editor }) => {
@@ -97,7 +97,7 @@ export function RichTextEditor({ value, onChange }) {
     <label style={labelStyle}>
       <span style={labelTextStyle}>Zengin Metin</span>
       <style>{rteCss}</style>
-      <div className="inkly-rte-shell" style={shellStyle}>
+      <div className="inscribed-rte-shell" style={shellStyle}>
         <Toolbar editor={editor} />
         <div style={contentWrapStyle}>
           <EditorContent editor={editor} />
@@ -263,7 +263,7 @@ function Btn({ active, disabled, onClick, title, ariaLabel, children }) {
       title={title}
       aria-label={ariaLabel}
       aria-pressed={active || undefined}
-      className={active ? "inkly-rte-btn inkly-rte-btn-active" : "inkly-rte-btn"}
+      className={active ? "inscribed-rte-btn inscribed-rte-btn-active" : "inscribed-rte-btn"}
       style={btnStyle}
     >
       {children}
@@ -334,69 +334,69 @@ const contentWrapStyle = /** @type {React.CSSProperties} */ ({
 // covers focus state on the shell (no native :focus-within in inline styles)
 // and the typographic baseline for headings/lists/blockquotes/code.
 const rteCss = `
-  .inkly-rte-btn:hover:not(:disabled) {
+  .inscribed-rte-btn:hover:not(:disabled) {
     background: ${SURFACE_HOVER};
     color: ${TEXT_PRIMARY};
   }
-  .inkly-rte-btn:disabled {
+  .inscribed-rte-btn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
   }
-  .inkly-rte-btn-active {
+  .inscribed-rte-btn-active {
     background: ${ACTIVE_BG} !important;
     color: ${ACCENT} !important;
   }
-  .inkly-rte-content {
+  .inscribed-rte-content {
     outline: none;
     min-height: 100px;
   }
-  .inkly-rte-content p {
+  .inscribed-rte-content p {
     margin: 0 0 0.6em;
   }
-  .inkly-rte-content p:last-child {
+  .inscribed-rte-content p:last-child {
     margin-bottom: 0;
   }
-  .inkly-rte-content h2 {
+  .inscribed-rte-content h2 {
     margin: 0.4em 0 0.4em;
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.01em;
     color: ${TEXT_PRIMARY};
   }
-  .inkly-rte-content h3 {
+  .inscribed-rte-content h3 {
     margin: 0.4em 0 0.3em;
     font-size: 14px;
     font-weight: 600;
     color: ${TEXT_PRIMARY};
   }
-  .inkly-rte-content ul,
-  .inkly-rte-content ol {
+  .inscribed-rte-content ul,
+  .inscribed-rte-content ol {
     margin: 0 0 0.6em;
     padding-left: 1.4em;
   }
-  .inkly-rte-content li {
+  .inscribed-rte-content li {
     margin: 0.15em 0;
   }
-  .inkly-rte-content blockquote {
+  .inscribed-rte-content blockquote {
     margin: 0 0 0.6em;
     padding: 4px 10px;
     border-left: 2px solid ${ACCENT};
     color: rgba(255,255,255,0.75);
     font-style: italic;
   }
-  .inkly-rte-content code {
+  .inscribed-rte-content code {
     padding: 1px 5px;
     border-radius: 4px;
     background: rgba(255,255,255,0.08);
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
     font-size: 0.9em;
   }
-  .inkly-rte-content a {
+  .inscribed-rte-content a {
     color: ${ACCENT};
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .inkly-rte-content:focus {
+  .inscribed-rte-content:focus {
     outline: none;
   }
   .ProseMirror-focused {
@@ -404,7 +404,7 @@ const rteCss = `
   }
   /* Focus ring on the shell when the editor inside has focus. Inline
      border-color on the shell div forces !important to override. */
-  .inkly-rte-shell:focus-within {
+  .inscribed-rte-shell:focus-within {
     border-color: ${BORDER_FOCUS} !important;
   }
 `;

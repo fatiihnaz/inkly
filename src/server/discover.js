@@ -3,7 +3,7 @@
  * `SyncManifestRequest[]` from `<EditableRegion>` JSX and `useCmsBlock`
  * call sites. Same shape the legacy hand-written `cms.manifest.mjs` had.
  *
- * SERVER ONLY - exposed via `inkly/server` and used by the
+ * SERVER ONLY - exposed via `inscribed/server` and used by the
  * `cms-sync` CLI. Not safe to import from a client component (pulls in the
  * native `oxc-parser` at runtime).
  *
@@ -11,7 +11,7 @@
  *
  *   - Every `withCms("/slug", X)` call is the root of one slug. The file
  *     containing the call is the entry point; reachable files are followed
- *     via relative imports (DFS pre-order). Bare specifiers (`inkly`,
+ *     via relative imports (DFS pre-order). Bare specifiers (`inscribed`,
  *     `next/...`) are not followed.
  *
  *   - Within reachable files, every `<EditableRegion blockPath blockType

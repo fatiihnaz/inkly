@@ -3,7 +3,7 @@
 /**
  * @file CMS Server Actions.
  *
- * Import from `inkly/actions`.
+ * Import from `inscribed/actions`.
  * The `"use server"` directive at the top of this file is required -
  * Next.js treats every export as a Server Action callable from Client Components.
  */

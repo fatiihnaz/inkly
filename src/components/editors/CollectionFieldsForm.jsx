@@ -83,7 +83,7 @@ function FieldInput({ field, value, onChange, disabled }) {
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          className="inkly-field"
+          className="inscribed-field"
           style={inputStyle}
         >
           <option value="">— seç —</option>
@@ -123,7 +123,7 @@ function FieldInput({ field, value, onChange, disabled }) {
               onChange(e.target.value === "" ? null : Number(e.target.value))
             }
             disabled={disabled}
-            className="inkly-field"
+            className="inscribed-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
@@ -139,7 +139,7 @@ function FieldInput({ field, value, onChange, disabled }) {
             value={toDatetimeLocal(value)}
             onChange={(e) => onChange(fromDatetimeLocal(e.target.value))}
             disabled={disabled}
-            className="inkly-field"
+            className="inscribed-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
@@ -156,7 +156,7 @@ function FieldInput({ field, value, onChange, disabled }) {
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             placeholder="https://…"
-            className="inkly-field"
+            className="inscribed-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
@@ -180,7 +180,7 @@ function FieldInput({ field, value, onChange, disabled }) {
             disabled={disabled}
             rows={3}
             placeholder="Her satır bir öğe"
-            className="inkly-field"
+            className="inscribed-field"
             style={textareaStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}
@@ -196,7 +196,7 @@ function FieldInput({ field, value, onChange, disabled }) {
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             rows={6}
-            className="inkly-field"
+            className="inscribed-field"
             style={textareaStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help} (HTML kabul edilir)</span> : null}
@@ -213,7 +213,7 @@ function FieldInput({ field, value, onChange, disabled }) {
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
-            className="inkly-field"
+            className="inscribed-field"
             style={inputStyle}
           />
           {field.help ? <span style={helpStyle}>{field.help}</span> : null}

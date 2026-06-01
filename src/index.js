@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * @file Public client-side API for `inkly`.
+ * @file Public client-side API for `inscribed`.
  *
- * Server-only helpers live at `inkly/server` (see `src/server/`).
+ * Server-only helpers live at `inscribed/server` (see `src/server/`).
  * Anything re-exported here ends up in the client bundle of the consuming
  * Next.js app, so keep server-only code out.
  *

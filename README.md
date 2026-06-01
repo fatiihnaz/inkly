@@ -1,11 +1,11 @@
-# inkly
+# inscribed
 
-[![npm version](https://img.shields.io/npm/v/inkly.svg)](https://www.npmjs.com/package/inkly)
-[![license](https://img.shields.io/npm/l/inkly.svg)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/inscribed.svg)](https://www.npmjs.com/package/inscribed)
+[![license](https://img.shields.io/npm/l/inscribed.svg)](./LICENSE)
 
 **Inline-editing CMS SDK for Next.js App Router.**
 
-inkly lets you mark up regions of your existing React tree as editable, then edit
+inscribed lets you mark up regions of your existing React tree as editable, then edit
 them in place from an admin drawer — no separate CMS dashboard, no content
 modelling ceremony. The content you author in JSX _is_ the schema. A discovery
 step walks your `app/` directory, registers every editable region with your
@@ -14,7 +14,7 @@ inline editor for admins.
 
 The core is **backend-agnostic**. Everything that talks to a server goes through
 a small `CmsTransport` contract; a REST adapter ships as the default, but you can
-point inkly at any backend (your own API, Strapi, Sanity, a database, a mock) by
+point inscribed at any backend (your own API, Strapi, Sanity, a database, a mock) by
 implementing that interface. See [Bring your own backend](#bring-your-own-backend).
 
 ---
@@ -68,7 +68,7 @@ implementing that interface. See [Bring your own backend](#bring-your-own-backen
 
 ## Requirements
 
-inkly is a peer of your app's framework runtime:
+inscribed is a peer of your app's framework runtime:
 
 | Peer dependency | Supported range  |
 | --------------- | ---------------- |
@@ -81,7 +81,7 @@ Node 18+ for the `cms-sync` CLI. The package is ESM-only.
 ## Installation
 
 ```bash
-npm install inkly
+npm install inscribed
 ```
 
 ## Quick start
@@ -97,7 +97,7 @@ the Server → Client boundary.
 
 ```js
 // app/lib/cms-config.js
-import { createCmsConfig } from "inkly";
+import { createCmsConfig } from "inscribed";
 
 export const cmsConfig = createCmsConfig({
   baseUrl: process.env.CMS_URL,        // backend root, no trailing slash
@@ -131,8 +131,8 @@ blocks server-side, resolves the session, and renders your provider.
 
 ```jsx
 // app/lib/cms.jsx
-import { createCmsPage } from "inkly/page";
-import { CmsProvider } from "inkly";
+import { createCmsPage } from "inscribed/page";
+import { CmsProvider } from "inscribed";
 
 import { cmsConfig } from "./cms-config.js";
 
@@ -149,7 +149,7 @@ export const CmsPage = createCmsPage({
 ```jsx
 // app/page.jsx  (a Server Component)
 import { CmsPage } from "./lib/cms.jsx";
-import { EditableRegion } from "inkly";
+import { EditableRegion } from "inscribed";
 
 export default function Home() {
   return (
@@ -174,7 +174,7 @@ export default function Home() {
 ```
 
 `blockType` and `defaultValue` are **discovery-time metadata** — read by the sync
-CLI, ignored at runtime. They tell inkly what kind of editor to show and what to
+CLI, ignored at runtime. They tell inscribed what kind of editor to show and what to
 seed the database row with.
 
 ### 5. Register the manifest
@@ -201,7 +201,7 @@ Editing is the same components plus an auth adapter — covered next.
 
 ### Authoring & discovery
 
-inkly has no schema file. You declare editable regions inline in your JSX and a
+inscribed has no schema file. You declare editable regions inline in your JSX and a
 static discovery step turns those declarations into a backend manifest.
 
 - **Declare** regions with `<EditableRegion>` / `<EditableList>` (and read-only
@@ -255,7 +255,7 @@ version.
 
 ```jsx
 "use client";
-import { EditableList } from "inkly";
+import { EditableList } from "inscribed";
 
 export function Team() {
   return (
@@ -311,7 +311,7 @@ their access token. Two pieces:
      getServiceToken,                        // server-only read token (optional)
      getSession: () => auth(),               // your session resolver
      deriveAdmin: (session) => Boolean(session?.user?.isAdmin),
-     onAfterSave: revalidateCmsSlug,         // from "inkly/actions"
+     onAfterSave: revalidateCmsSlug,         // from "inscribed/actions"
    });
    ```
 
@@ -321,7 +321,7 @@ their access token. Two pieces:
 
    ```jsx
    "use client";
-   import { CmsProvider } from "inkly";
+   import { CmsProvider } from "inscribed";
    import { useSession } from "your-auth-lib/react";
 
    export function AdminCmsProvider(props) {
@@ -333,14 +333,14 @@ their access token. Two pieces:
 Once enabled, admins get the inline overlay and a side drawer. Edits **autosave
 as drafts** (debounced ~1s to the draft endpoint) while a live preview overlays
 the page; **publishing** is an explicit save in the drawer. Discarding clears the
-server draft. inkly itself depends on **no auth library** — these are all
+server draft. inscribed itself depends on **no auth library** — these are all
 injected callbacks, with a public read-only default.
 
 ### Caching & revalidation
 
 Server reads (`getCmsPageBlocks`) are ISR-cacheable and tagged `cms-{slug}`.
 After an admin publishes, call `revalidateCmsSlug(slug)` (a Server Action from
-`inkly/actions`) — pass it as `onAfterSave` and stale visitor content is dropped
+`inscribed/actions`) — pass it as `onAfterSave` and stale visitor content is dropped
 on the next request. The global slug (header/footer/site-wide blocks) is fetched
 in parallel and merged into the same blocks map, so a shared block edited on any
 page reflects everywhere.
@@ -349,7 +349,7 @@ page reflects everywhere.
 
 ## Architecture: the seams
 
-inkly's core knows nothing about your backend or auth provider. Three injection
+inscribed's core knows nothing about your backend or auth provider. Three injection
 seams keep it vendor-neutral; each has a default in `src/defaults/` so the
 zero-config path still works.
 
@@ -399,7 +399,7 @@ the REST default maps it onto Next.js' `fetch(..., { next })` extension.
 
 ```js
 // my-transport.js
-/** @returns {import("inkly").CmsTransport} */
+/** @returns {import("inscribed").CmsTransport} */
 export function createMyTransport({ baseUrl }) {
   const auth = (token) => (token ? { Authorization: `Bearer ${token}` } : {});
 
@@ -427,7 +427,7 @@ Inject it on **both** sides:
 
 ```js
 // server — pass at the call site (server-only objects can carry functions)
-import { getCmsPageBlocks } from "inkly/server";
+import { getCmsPageBlocks } from "inscribed/server";
 
 const transport = createMyTransport({ baseUrl });
 const blocks = await getCmsPageBlocks({ ...cmsConfig, transport }, slug);
@@ -441,17 +441,17 @@ const blocks = await getCmsPageBlocks({ ...cmsConfig, transport }, slug);
 
 ## Package entry points
 
-inkly ships several entry points so server-only code never leaks into the client
+inscribed ships several entry points so server-only code never leaks into the client
 bundle:
 
 | Import | Side | Highlights |
 | ------ | ---- | ---------- |
-| `inkly` | client | `CmsProvider`, `EditableRegion`, `EditableList`, `CmsGroup`, `CollectionRegion`, `CollectionItem`, `useCmsContent`, `useCmsBlock`, `useCmsAdmin`, `useCollection`, `useCollectionItem`, `useCountdown`, `createCmsConfig`, `CmsApiError`, block helpers (`getBlock`, `getBlockValue`, `groupBlocksByPrefix`, `indexBlocksByPath`) |
-| `inkly/server` | server only | `getCmsContent`, `getCmsPageBlocks`, `syncCmsManifest`, `syncAll`, `discoverManifests`, `cmsCacheTag` |
-| `inkly/page` | server only | `createCmsPage` |
-| `inkly/actions` | Server Action | `revalidateCmsSlug` |
+| `inscribed` | client | `CmsProvider`, `EditableRegion`, `EditableList`, `CmsGroup`, `CollectionRegion`, `CollectionItem`, `useCmsContent`, `useCmsBlock`, `useCmsAdmin`, `useCollection`, `useCollectionItem`, `useCountdown`, `createCmsConfig`, `CmsApiError`, block helpers (`getBlock`, `getBlockValue`, `groupBlocksByPrefix`, `indexBlocksByPath`) |
+| `inscribed/server` | server only | `getCmsContent`, `getCmsPageBlocks`, `syncCmsManifest`, `syncAll`, `discoverManifests`, `cmsCacheTag` |
+| `inscribed/page` | server only | `createCmsPage` |
+| `inscribed/actions` | Server Action | `revalidateCmsSlug` |
 
-Import `inkly/server` and `inkly/page` only from Server Components, route
+Import `inscribed/server` and `inscribed/page` only from Server Components, route
 handlers, or build scripts — never from a Client Component.
 
 ## CLI: `cms-sync`
@@ -485,13 +485,13 @@ export const onSyncError = (err) => { /* ... */ };  // optional
 
 ## TypeScript
 
-inkly is written in JavaScript with JSDoc and ships generated `.d.ts`
+inscribed is written in JavaScript with JSDoc and ships generated `.d.ts`
 declarations for every entry point — you get full type information and editor
 autocomplete with no extra setup. Public types such as `CmsTransport`,
 `CmsConfig`, and `BlockType` are importable:
 
 ```ts
-import type { CmsTransport } from "inkly";
+import type { CmsTransport } from "inscribed";
 ```
 
 ## Contributing

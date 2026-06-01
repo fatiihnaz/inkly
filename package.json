@@ -1,5 +1,5 @@
 {
-  "name": "inkly",
+  "name": "inscribed",
   "version": "1.0.0",
   "description": "Inline-editing CMS SDK for Next.js App Router projects",
   "keywords": [
@@ -14,13 +14,13 @@
     "tiptap",
     "sdk"
   ],
-  "homepage": "https://github.com/fatiihnaz/inkly#readme",
+  "homepage": "https://github.com/fatiihnaz/inscribed#readme",
   "bugs": {
-    "url": "https://github.com/fatiihnaz/inkly/issues"
+    "url": "https://github.com/fatiihnaz/inscribed/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fatiihnaz/inkly.git"
+    "url": "git+https://github.com/fatiihnaz/inscribed.git"
   },
   "license": "LGPL-3.0-or-later",
   "author": "Fatih Naz <fatiihnaz@gmail.com>",

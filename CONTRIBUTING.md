@@ -1,4 +1,4 @@
-# Contributing to inkly
+# Contributing to inscribed
 
 Thanks for your interest in contributing. This guide covers the development
 setup, the build and test workflow, the architecture you'll be working within,
@@ -36,8 +36,8 @@ and most "where should this go?" questions answer themselves.
   at the use site on each side. Breaking this throws
   _"Functions cannot be passed directly to Client Components"_ at runtime.
 - **Server-only vs client-only is explicit.** Client code lives behind the
-  `inkly` entry's `"use client"` boundary; server code lives under
-  `inkly/server` and `inkly/page`. Never import server modules from client code.
+  `inscribed` entry's `"use client"` boundary; server code lives under
+  `inscribed/server` and `inscribed/page`. Never import server modules from client code.
 - **JavaScript + JSDoc, not TypeScript source.** We author `.js`/`.jsx` with JSDoc
   type annotations and emit `.d.ts` from them. There is no `.ts` source.
 
@@ -51,8 +51,8 @@ The package is ESM-only (`"type": "module"`).
 ## Getting started
 
 ```bash
-git clone https://github.com/fatiihnaz/inkly.git
-cd inkly
+git clone https://github.com/fatiihnaz/inscribed.git
+cd inscribed
 npm install
 npm run build    # produce dist/
 npm test         # run the unit suite
@@ -66,7 +66,7 @@ package into a consuming Next.js project (`npm link`, a workspace, or a local
 
 ```
 src/
-  index.js              # `inkly` — client entry ("use client" lives here)
+  index.js              # `inscribed` — client entry ("use client" lives here)
   components/           # React components (EditableRegion, drawer UI, ...)
   hooks/                # client hooks (useCmsContent, useCollection, ...)
   lib/                  # framework-agnostic logic + JSDoc typedefs
@@ -81,9 +81,9 @@ src/
     service-token.js    #   noServiceToken
     auth.js             #   publicAuth (read-only)
   server/               # SERVER ONLY
-    get-content.js      #   `inkly/server` entry
-    actions.js          #   `inkly/actions` entry ("use server")
-    cms-page.jsx        #   `inkly/page` entry (createCmsPage)
+    get-content.js      #   `inscribed/server` entry
+    actions.js          #   `inscribed/actions` entry ("use server")
+    cms-page.jsx        #   `inscribed/page` entry (createCmsPage)
     discover.js         #   AST manifest discovery
   cli/
     sync.js             #   `cms-sync` binary
@@ -99,10 +99,10 @@ in `tsup.config.js` and mirror the `exports` map in `package.json`:
 
 | Entry | Source | Published as |
 | ----- | ------ | ------------ |
-| `index`    | `src/index.js`            | `inkly` |
-| `server`   | `src/server/get-content.js` | `inkly/server` |
-| `actions`  | `src/server/actions.js`   | `inkly/actions` |
-| `page`     | `src/server/cms-page.jsx` | `inkly/page` |
+| `index`    | `src/index.js`            | `inscribed` |
+| `server`   | `src/server/get-content.js` | `inscribed/server` |
+| `actions`  | `src/server/actions.js`   | `inscribed/actions` |
+| `page`     | `src/server/cms-page.jsx` | `inscribed/page` |
 | `cli-sync` | `src/cli/sync.js`         | `cms-sync` bin |
 
 ```bash
@@ -163,7 +163,7 @@ npm run test:watch # watch mode
 - **Comments explain _why_, not _what_.** The codebase favours substantial
   comments on non-obvious decisions (the RSC boundary, cache invalidation, store
   subscriptions). Preserve and extend that style; don't strip context.
-- **Server/client hygiene.** Never import `inkly/server`, `inkly/page`, or any
+- **Server/client hygiene.** Never import `inscribed/server`, `inscribed/page`, or any
   `src/server/**` module from client code, and vice versa. Keep browser-only
   types out of `src/lib/config.js` (it's read on both sides).
 - **No functions across the RSC boundary.** Anything that becomes a prop on a

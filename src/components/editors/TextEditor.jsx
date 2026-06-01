@@ -17,7 +17,7 @@ export function TextEditor({ value, onChange }) {
     <label style={labelStyle}>
       <span style={labelTextStyle}>Metin</span>
       <textarea
-        className="inkly-field"
+        className="inscribed-field"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         rows={4}

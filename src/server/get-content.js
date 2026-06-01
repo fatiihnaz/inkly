@@ -1,7 +1,7 @@
 /**
  * @file Server-side content fetchers and sync helpers for Next.js App Router.
  *
- * SERVER ONLY - published under the `inkly/server` subpath.
+ * SERVER ONLY - published under the `inscribed/server` subpath.
  * Pull it from React Server Components (`app/**\/page.jsx`, layouts,
  * route handlers, build scripts); never import it from a client component.
  *

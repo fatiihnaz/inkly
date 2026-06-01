@@ -95,7 +95,7 @@ export function ListEditor({ value, onChange, itemSchema }) {
         type="button"
         onClick={onAdd}
         style={listAddButtonStyle}
-        className="inkly-icon-action"
+        className="inscribed-icon-action"
       >
         <Plus size={13} />
         <span>Öğe ekle</span>

@@ -345,7 +345,7 @@ export const toolbarStyle = {
   padding: "10px 16px 6px",
 };
 
-// Base background + box-shadow set in CSS (`.inkly-search`) so the
+// Base background + box-shadow set in CSS (`.inscribed-search`) so the
 // `:focus-within` rule can swap them.
 export const searchWrapStyle = {
   position: "relative",
@@ -368,7 +368,7 @@ export const searchInputStyle = {
   fontFamily: "inherit",
 };
 
-// Base color + background live on `.inkly-search-clear` so the
+// Base color + background live on `.inscribed-search-clear` so the
 // hover rule can swap them.
 export const searchClearStyle = {
   border: 0,
@@ -482,9 +482,9 @@ export const listStyle = {
 
 // Base structural styles only. The card's surface fill, border ring,
 // hover state, dirty rail, and active accents all live on the
-// `.inkly-block-card` CSS class (see `panelCss`) so the variant
-// classes (`.is-dirty`, `.inkly-block-card-active`,
-// `.inkly-block-card-collection-active`) can override them —
+// `.inscribed-block-card` CSS class (see `panelCss`) so the variant
+// classes (`.is-dirty`, `.inscribed-block-card-active`,
+// `.inscribed-block-card-collection-active`) can override them —
 // inline styles would otherwise win over CSS.
 export const blockCardStyle = {
   borderRadius: RADIUS,
@@ -546,7 +546,7 @@ export const dirtyDotStyle = {
   flexShrink: 0,
 };
 
-// Base color + background live on `.inkly-icon-button` so the
+// Base color + background live on `.inscribed-icon-button` so the
 // hover rule can swap them.
 export const blockResetStyle = {
   width: 22,
@@ -790,7 +790,7 @@ export const userEmailStyle = {
   textOverflow: "ellipsis",
 };
 
-// Base color + background live on `.inkly-logout` so the hover
+// Base color + background live on `.inscribed-logout` so the hover
 // rule can swap them.
 export const signOutButtonStyle = {
   width: 26,
@@ -869,187 +869,187 @@ export const panelCss = `
     :root { interpolate-size: allow-keywords; }
   }
 
-  .inkly-tabbar-scroll {
+  .inscribed-tabbar-scroll {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
-  .inkly-tabbar-scroll::-webkit-scrollbar { display: none; }
+  .inscribed-tabbar-scroll::-webkit-scrollbar { display: none; }
 
-  .inkly-tabbar-chevron {
+  .inscribed-tabbar-chevron {
     transition: color 120ms ease;
   }
-  .inkly-tabbar-chevron:hover:not(:disabled) { color: ${ACCENT}; }
-  .inkly-tabbar-chevron:disabled { opacity: 0; pointer-events: none; }
+  .inscribed-tabbar-chevron:hover:not(:disabled) { color: ${ACCENT}; }
+  .inscribed-tabbar-chevron:disabled { opacity: 0; pointer-events: none; }
 
-  .inkly-tab:hover { color: ${TEXT}; }
+  .inscribed-tab:hover { color: ${TEXT}; }
 
-  .inkly-search {
+  .inscribed-search {
     background: ${SURFACE_1};
     box-shadow: inset 0 0 0 1px ${HAIRLINE};
     transition: box-shadow 140ms ease, background 140ms ease;
   }
-  .inkly-search:focus-within {
+  .inscribed-search:focus-within {
     background: ${SURFACE_2};
     box-shadow: inset 0 0 0 1px ${BORDER_FOCUS};
   }
-  .inkly-search input::placeholder { color: ${TEXT_FAINT}; }
-  .inkly-search input[type="search"]::-webkit-search-cancel-button,
-  .inkly-search input[type="search"]::-webkit-search-decoration { display: none; }
-  .inkly-search-clear {
+  .inscribed-search input::placeholder { color: ${TEXT_FAINT}; }
+  .inscribed-search input[type="search"]::-webkit-search-cancel-button,
+  .inscribed-search input[type="search"]::-webkit-search-decoration { display: none; }
+  .inscribed-search-clear {
     background: transparent;
     color: ${TEXT_FAINT};
     transition: color 140ms ease;
   }
-  .inkly-search-clear:hover { color: ${TEXT}; }
+  .inscribed-search-clear:hover { color: ${TEXT}; }
 
   /* Block card — inset shadow as border. Base surface + ring set here
      so the dirty / active CSS variants can override them (inline styles
      would otherwise win). */
-  .inkly-block-card {
+  .inscribed-block-card {
     background: ${SURFACE_1};
     box-shadow: inset 0 0 0 1px ${HAIRLINE};
     transition: box-shadow 160ms ease, background 160ms ease;
   }
-  .inkly-block-card:hover { box-shadow: inset 0 0 0 1px ${BORDER}; }
+  .inscribed-block-card:hover { box-shadow: inset 0 0 0 1px ${BORDER}; }
   /* Collection lane cards (Page-tab Collection blocks + Region-tab item
      cards) keep a faint pink-purple ring in their idle state so the
      whole Collection lane reads as one visual family even before the
      user opens anything. Hover stays on the shared base rule so dirty
      and active state rules below can still win on source order — a
      collection-specific :hover would beat them via specificity. */
-  .inkly-block-card.inkly-block-card-collection {
+  .inscribed-block-card.inscribed-block-card-collection {
     box-shadow: inset 0 0 0 1px ${COLLECTION_LINE};
   }
-  .inkly-block-card.is-dirty {
+  .inscribed-block-card.is-dirty {
     box-shadow: inset 0 0 0 1px ${ACCENT_LINE}, inset 2px 0 0 ${ACCENT};
   }
-  .inkly-block-card.inkly-block-card-collection.is-dirty {
+  .inscribed-block-card.inscribed-block-card-collection.is-dirty {
     box-shadow: inset 0 0 0 1px ${COLLECTION_LINE}, inset 2px 0 0 ${COLLECTION_ACCENT};
   }
   /* Active rules use a compound selector so they match the (0,2,0)
-     specificity of \`.inkly-block-card.is-dirty\` — and come after
+     specificity of \`.inscribed-block-card.is-dirty\` — and come after
      it in source order so an open + dirty card lands on the active
      accent (sage for regular blocks, pink-purple for Collection lanes)
      instead of the dirty rail. */
-  .inkly-block-card.inkly-block-card-active {
+  .inscribed-block-card.inscribed-block-card-active {
     box-shadow: inset 0 0 0 1px ${BORDER_HI}, inset 3px 0 0 ${ACCENT};
     background: ${SURFACE_2};
   }
-  .inkly-block-card.inkly-block-card-collection-active {
+  .inscribed-block-card.inscribed-block-card-collection-active {
     box-shadow: inset 0 0 0 1px ${BORDER_HI}, inset 3px 0 0 ${COLLECTION_ACCENT};
     background: ${SURFACE_2};
   }
 
   /* Body collapse — height:0 ↔ height:auto via interpolate-size. */
-  .inkly-collapse {
+  .inscribed-collapse {
     height: 0;
     overflow: hidden;
     transition: height 240ms cubic-bezier(0.32, 0.72, 0.18, 1);
   }
-  .inkly-collapse.is-open { height: auto; }
+  .inscribed-collapse.is-open { height: auto; }
 
   /* Reset (Undo) icon-buttons */
-  .inkly-icon-button {
+  .inscribed-icon-button {
     background: transparent;
     color: ${TEXT_MUTED};
     transition: color 140ms ease, background-color 140ms ease, filter 140ms ease;
   }
-  .inkly-icon-button:hover:not(:disabled) {
+  .inscribed-icon-button:hover:not(:disabled) {
     color: ${ACCENT};
     background-color: ${ACCENT_SOFT};
   }
-  .inkly-icon-button:disabled {
+  .inscribed-icon-button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
 
   /* Status bar buttons */
-  .inkly-btn-primary {
+  .inscribed-btn-primary {
     background: ${TEXT_HI};
     color: ${BG};
     transition: background 140ms ease, color 140ms ease;
   }
-  .inkly-btn-primary:hover:not(:disabled) { background: ${ACCENT}; }
-  .inkly-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .inscribed-btn-primary:hover:not(:disabled) { background: ${ACCENT}; }
+  .inscribed-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .inkly-btn-ghost {
+  .inscribed-btn-ghost {
     background: transparent;
     color: ${TEXT_MID};
     box-shadow: inset 0 0 0 1px ${HAIRLINE};
     transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
   }
-  .inkly-btn-ghost:hover:not(:disabled) {
+  .inscribed-btn-ghost:hover:not(:disabled) {
     color: ${TEXT_HI};
     box-shadow: inset 0 0 0 1px ${BORDER};
     background: ${SURFACE_1};
   }
-  .inkly-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+  .inscribed-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Handle */
-  .inkly-handle {
+  .inscribed-handle {
     color: ${TEXT_MUTED};
     transition: color 200ms ease;
   }
-  .inkly-handle:focus-visible { outline: none; }
-  .inkly-handle:hover, .inkly-handle:focus-visible { color: ${TEXT_HI}; }
-  .inkly-handle-slide {
+  .inscribed-handle:focus-visible { outline: none; }
+  .inscribed-handle:hover, .inscribed-handle:focus-visible { color: ${TEXT_HI}; }
+  .inscribed-handle-slide {
     transition: transform 220ms cubic-bezier(0.32, 0.72, 0.18, 1), filter 200ms ease;
     will-change: transform, filter;
   }
-  .inkly-handle:hover .inkly-handle-slide,
-  .inkly-handle:focus-visible .inkly-handle-slide {
+  .inscribed-handle:hover .inscribed-handle-slide,
+  .inscribed-handle:focus-visible .inscribed-handle-slide {
     transform: translateX(var(--slide-x, 3px));
     filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.55));
   }
 
   /* Sign-out */
-  .inkly-logout {
+  .inscribed-logout {
     background: transparent;
     color: ${TEXT_MUTED};
     transition: color 140ms ease, background-color 140ms ease;
   }
-  .inkly-logout:hover:not(:disabled) {
+  .inscribed-logout:hover:not(:disabled) {
     color: ${STATUS_DANGER};
     background-color: rgba(232,132,152,0.10);
   }
-  .inkly-logout:disabled { opacity: 0.4; cursor: not-allowed; }
+  .inscribed-logout:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Form inputs (used by editors + CollectionFieldsForm) */
-  input.inkly-field, textarea.inkly-field, select.inkly-field {
+  input.inscribed-field, textarea.inscribed-field, select.inscribed-field {
     transition: box-shadow 140ms ease, background-color 140ms ease;
   }
-  input.inkly-field:focus, textarea.inkly-field:focus, select.inkly-field:focus {
+  input.inscribed-field:focus, textarea.inscribed-field:focus, select.inscribed-field:focus {
     background-color: ${SURFACE_2};
     box-shadow: inset 0 0 0 1px ${BORDER_FOCUS};
   }
-  input.inkly-field::placeholder, textarea.inkly-field::placeholder {
+  input.inscribed-field::placeholder, textarea.inscribed-field::placeholder {
     color: ${TEXT_FAINT};
   }
 
   ul[data-cms-list]::-webkit-scrollbar { display: none; }
 
   /* Status dot pulse for the saving state */
-  @keyframes inkly-status-pulse {
+  @keyframes inscribed-status-pulse {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.45; }
   }
-  .inkly-status-pulse { animation: inkly-status-pulse 1100ms ease-in-out infinite; }
+  .inscribed-status-pulse { animation: inscribed-status-pulse 1100ms ease-in-out infinite; }
 
   /* Load more / Create form / Region cards reuse these patterns. */
-  .inkly-load-more { transition: color 140ms ease, border-color 140ms ease, background 140ms ease; }
-  .inkly-load-more:hover:not(:disabled) {
+  .inscribed-load-more { transition: color 140ms ease, border-color 140ms ease, background 140ms ease; }
+  .inscribed-load-more:hover:not(:disabled) {
     color: ${TEXT};
     border-color: ${BORDER_HI};
     background: ${SURFACE_1};
   }
-  .inkly-load-more:disabled { opacity: 0.5; cursor: progress; }
+  .inscribed-load-more:disabled { opacity: 0.5; cursor: progress; }
 
-  .inkly-text-button { transition: color 140ms ease, background-color 140ms ease; }
-  .inkly-text-button:hover:not(:disabled) {
+  .inscribed-text-button { transition: color 140ms ease, background-color 140ms ease; }
+  .inscribed-text-button:hover:not(:disabled) {
     color: ${TEXT_HI};
     background-color: ${SURFACE_1};
   }
-  .inkly-text-button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .inscribed-text-button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .inkly-create-card { transition: background 140ms ease, box-shadow 140ms ease; }
+  .inscribed-create-card { transition: background 140ms ease, box-shadow 140ms ease; }
 `;
