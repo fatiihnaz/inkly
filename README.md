@@ -247,12 +247,18 @@ Groups nest (dot-joined), and discovery applies the exact same prefix so you
 never repeat the group name in each path. In admin mode the group also draws a
 labelled outline so editors can see section boundaries.
 
+`<CmsGroup>` also accepts `visible` / `editable` to lock or hide a whole section
+in one place; the mode cascades to every descendant. See
+[Access control](#access-control).
+
 ### Lists
 
 `<EditableList>` renders a `List`-typed block as repeatable items via a
 render-prop. You provide an `itemSchema` describing each item's fields; admins
 get add / remove / reorder controls and the whole list saves atomically as one
-version.
+version. It accepts the same `visible` / `editable` gates as `<EditableRegion>`
+(see [Access control](#access-control)) read-only drops the add/move/delete
+affordances and locks the drawer card.
 
 ```jsx
 "use client";
@@ -339,17 +345,20 @@ injected callbacks, with a public read-only default.
 
 ### Access control
 
-By default every `<EditableRegion>` is editable by anyone whose session satisfies
-`isAdmin`. Two props let you narrow that further on a per-region basis without
-touching the provider or the auth layer:
+By default every `<EditableRegion>` / `<EditableList>` is editable by anyone whose
+session satisfies `isAdmin`. Two props let you narrow that per block, without
+touching the provider or the auth layer. They gate **both** the inline page
+overlay and the block's card in the admin drawer:
 
 | Prop | Type | Default | Behaviour |
 | ---- | ---- | ------- | --------- |
-| `editable` | `boolean` | `true` | When `false`, the region renders read-only even for admins. The hover/click overlay is suppressed; the content still renders normally for all visitors. |
-| `visible` | `boolean` | `true` | When `false`, forces non-editable regardless of `editable` or the context `isAdmin`. Intended for future drawer-level visibility control; currently has the same runtime effect as `editable={false}`. |
+| `editable` | `boolean` | `true` | When `false`, the block is **read-only**: no inline overlay on the page, and its drawer card stays visible but locked (every field disabled, with a lock badge). |
+| `visible` | `boolean` | `true` | When `false`, the block is **removed from the admin drawer entirely** (no card, no count) and renders read-only on the page. Takes precedence over `editable`. |
 
-`visible={false}` overrides `editable`: a region that isn't visible to the admin
-panel is never editable either.
+These are **runtime-only** gates discovery still syncs the block and seeds its
+row, so the content renders normally for every visitor; only the *editing*
+surface is affected. `visible={false}` is the stronger of the two: a block the
+admin panel can't see is never editable either.
 
 The props carry no role logic themselves. Compute the boolean however your app
 resolves roles and pass it in:
@@ -365,6 +374,20 @@ const canEdit = userRoles.includes("CONTENT_EDITOR");
   as="h1"
   editable={canEdit}
 />
+```
+
+**Section-level gating.** Set the same props on a `<CmsGroup>` to gate every
+descendant region and list at once. The mode cascades down (nested groups
+included); precedence is **most restrictive wins** (`hidden` > `readonly` >
+normal), so a child can *tighten* the section's mode but not loosen it:
+
+```jsx
+<CmsGroup name="hero" editable={false}>
+  {/* whole section read-only in the drawer */}
+  <EditableRegion blockPath="title" blockType="Text" defaultValue="Welcome" as="h1" />
+  {/* a child can go further and hide itself, but can't re-enable editing */}
+  <EditableRegion blockPath="badge" blockType="Text" defaultValue="New" visible={false} />
+</CmsGroup>
 ```
 
 ### Caching & revalidation

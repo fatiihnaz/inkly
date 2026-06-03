@@ -208,6 +208,13 @@ Keep the method's options shape consistent: `(…, opts?)` where `opts` is
 2. Teach `<EditableRegion>` (and discovery in `src/server/discover.js`) to render
    and recognise it.
 3. Add the editor UI in the admin drawer components.
+4. Thread the `disabled` prop through the editor and honour it on every
+   interactive surface. Read-only blocks (`editable={false}`, or anything inside
+   a locked `<CmsGroup>`) flow a `disabled` flag down through `FieldEditor`; an
+   editor that ignores it stays editable when it shouldn't. The
+   `editorVisibility` context registry (populated by `<EditableRegion>` /
+   `<EditableList>`, consumed by the drawer) is what drives this it follows the
+   same register/unregister pattern as `itemSchemas` and `collectionBindings`.
 
 ## Commit conventions
 
