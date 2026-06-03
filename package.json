@@ -1,6 +1,6 @@
 {
   "name": "inscribed",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Inline-editing CMS SDK for Next.js App Router projects",
   "keywords": [
     "cms",
@@ -58,7 +58,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm test && npm run build"
   },
   "dependencies": {
     "@tiptap/extension-link": "^2.10.0",

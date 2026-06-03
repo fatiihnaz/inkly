@@ -57,6 +57,14 @@ import { CmsGroupContext } from "../lib/group-context.js";
  *   any page slug, so the same block backs every page. Runtime ignores
  *   this prop - the merged blocks map already contains both page and
  *   global blocks under the same keys.
+ * @property {boolean} [editable]
+ *   Override the context-level `isAdmin` gate for this region. When
+ *   `false`, the region renders read-only even for admins. Omit (or
+ *   `true`) to fall back to the default `isAdmin` behaviour.
+ * @property {boolean} [visible]
+ *   When `false`, forces non-editable regardless of `editable` or
+ *   `isAdmin`. Intended for drawer-level visibility control; content
+ *   still renders to the page, edit affordance is suppressed.
  */
 
 const RING_HOVER   = "0 0 0 1.5px rgba(201,184,150,0.30)";
@@ -83,7 +91,7 @@ const BLOCK_TAGS = new Set([
 // DOM nodes) and (b) they don't shadow the local `blockType` const
 // computed below.
 // eslint-disable-next-line no-unused-vars
-export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _dv, scope: _scope, ...rest }) {
+export function EditableRegion({ blockPath, as, editable, visible, blockType: _bt, defaultValue: _dv, scope: _scope, ...rest }) {
   const { isAdmin, blocks, contentDraftsStore, activeBlock, setActiveBlock } = useCmsContext();
   const groupPrefix = useContext(CmsGroupContext);
   const [isHovered, setIsHovered] = useState(false);
@@ -118,7 +126,7 @@ export function EditableRegion({ blockPath, as, blockType: _bt, defaultValue: _d
     ? renderPlaceholder(as, rest)
     : renderBlock(blockType, value, { as, ...rest });
 
-  if (!isAdmin) return rendered;
+  if (!isAdmin || editable === false || visible === false) return rendered;
 
   const isActive = activeBlock === fullPath;
   /** @param {React.MouseEvent} e */
