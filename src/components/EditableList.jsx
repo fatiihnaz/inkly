@@ -43,7 +43,7 @@ import { Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 
 import { useCmsContext } from "../lib/context.js";
 import { useStoreSelector } from "../lib/store.js";
-import { CmsGroupContext } from "../lib/group-context.js";
+import { CmsGroupContext, CmsGroupVisibilityContext, strongerVisibility } from "../lib/group-context.js";
 import { addItem, makeDefaultItem, moveItem, removeItem } from "../lib/list-ops.js";
 
 /**
@@ -64,6 +64,14 @@ import { addItem, makeDefaultItem, moveItem, removeItem } from "../lib/list-ops.
  *   Discovery-only. Set to `"global"` to share the list across every
  *   page (header/footer style). Runtime ignores it - the merged blocks
  *   map already contains both page and global blocks.
+ * @property {boolean} [editable]
+ *   When `false`, the list renders read-only (no inline add/move/delete)
+ *   and its drawer card is locked. Mirrors `<EditableRegion editable>`.
+ *   An enclosing `<CmsGroup editable={false}>` applies the same effect.
+ * @property {boolean} [visible]
+ *   When `false`, the list is removed from the admin drawer entirely and
+ *   renders read-only on the page (items still ship to the DOM). Takes
+ *   precedence over `editable`; inheritable from `<CmsGroup>`.
  */
 
 const ITEM_RING       = "inset 0 0 0 1.5px rgba(201,184,150,0.30)";
@@ -79,18 +87,25 @@ const PANEL_BORDER    = "1px solid rgba(255,255,255,0.10)";
 /**
  * @param {EditableListProps} props
  */
-export function EditableList({ blockPath, itemSchema, children, defaultValue, scope }) {
+export function EditableList({ blockPath, itemSchema, children, defaultValue, scope, editable, visible }) {
   void defaultValue; void scope; // discovery-only
   const {
     isAdmin, blocks, contentDraftsStore, setDraft,
     registerItemSchema, unregisterItemSchema,
+    registerEditorVisibility, unregisterEditorVisibility,
   } = useCmsContext();
   const groupPrefix = useContext(CmsGroupContext);
+  const groupVisibility = useContext(CmsGroupVisibilityContext);
 
   // Auto-prefix when wrapped in a `<CmsGroup>`. Discovery applies the same
   // rule statically so the manifest entry's path matches the runtime
   // lookup key.
   const fullPath = groupPrefix ? `${groupPrefix}.${blockPath}` : blockPath;
+
+  // Resolve own `visible`/`editable` against any inherited group mode —
+  // most restrictive wins (see EditableRegion for the same fold).
+  const ownMode = visible === false ? "hidden" : editable === false ? "readonly" : null;
+  const visibilityMode = strongerVisibility(groupVisibility, ownMode);
 
   // Hand the schema to the AdminDrawer so it can build the per-field item
   // editor. Re-runs only when fullPath changes; itemSchema reference flips
@@ -100,6 +115,14 @@ export function EditableList({ blockPath, itemSchema, children, defaultValue, sc
     registerItemSchema(fullPath, itemSchema);
     return () => unregisterItemSchema(fullPath);
   }, [fullPath, itemSchema, registerItemSchema, unregisterItemSchema]);
+
+  // Mirror EditableRegion: surface a hidden/readonly override to the drawer
+  // registry so the List card is dropped or locked. Admin-only.
+  useEffect(() => {
+    if (!isAdmin || !visibilityMode) return undefined;
+    registerEditorVisibility(fullPath, visibilityMode);
+    return () => unregisterEditorVisibility(fullPath);
+  }, [isAdmin, fullPath, visibilityMode, registerEditorVisibility, unregisterEditorVisibility]);
 
   // Subscribe to just this list's draft slice (see EditableRegion for the
   // two-selector presence/value rationale) so typing in one list doesn't
@@ -123,7 +146,11 @@ export function EditableList({ blockPath, itemSchema, children, defaultValue, sc
   /** @param {Record<string, *>[]} next */
   const setItems = (next) => setDraft(fullPath, next);
 
-  if (!isAdmin) {
+  // Public visitors and read-only/hidden lists (own prop or inherited from
+  // a `<CmsGroup>`) get the plain passthrough — items still render, but no
+  // inline add/move/delete affordances. The locked drawer card (for
+  // "readonly") and its removal (for "hidden") are handled by the registry.
+  if (!isAdmin || visibilityMode) {
     return (
       <>
         {items.map((item, i) => (

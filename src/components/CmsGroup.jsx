@@ -33,7 +33,7 @@
 
 import { useContext, useState } from "react";
 
-import { CmsGroupContext } from "../lib/group-context.js";
+import { CmsGroupContext, CmsGroupVisibilityContext, strongerVisibility } from "../lib/group-context.js";
 import { useCmsContext } from "../lib/context.js";
 
 /**
@@ -41,6 +41,15 @@ import { useCmsContext } from "../lib/context.js";
  * @property {string} name        Section name. Joined with parent CmsGroups via dots.
  * @property {React.ReactNode} children
  * @property {React.CSSProperties} [style]   Forwarded to the wrapper div in admin mode.
+ * @property {boolean} [editable]
+ *   Section-level lock. When `false`, every descendant `<EditableRegion>` /
+ *   `<EditableList>` renders read-only (page + drawer card disabled), as if
+ *   each carried `editable={false}`. Children may tighten further (a child
+ *   `visible={false}` still hides), but cannot loosen past the group.
+ * @property {boolean} [visible]
+ *   Section-level hide. When `false`, every descendant is removed from the
+ *   admin drawer and renders read-only on the page. Takes precedence over
+ *   `editable`. Inherited by nested groups (most restrictive wins).
  */
 
 const RING_COLOR_HOVER = "rgba(201,184,150,0.50)";
@@ -52,9 +61,10 @@ const LABEL_COLOR      = "rgba(201,184,150,0.85)";
 /**
  * @param {CmsGroupProps} props
  */
-export function CmsGroup({ name, children, style }) {
+export function CmsGroup({ name, children, style, editable, visible }) {
   const { isAdmin } = useCmsContext();
   const parentPrefix = useContext(CmsGroupContext);
+  const parentVisibility = useContext(CmsGroupVisibilityContext);
   const [hovered, setHovered] = useState(false);
 
   // Nested CmsGroups concat: <CmsGroup name="hero"><CmsGroup name="cta">
@@ -63,58 +73,73 @@ export function CmsGroup({ name, children, style }) {
   // just `name`.
   const prefix = parentPrefix ? `${parentPrefix}.${name}` : name;
 
+  // Fold this group's own visibility prop together with any inherited from
+  // an enclosing group — most restrictive wins, so a `readonly` group
+  // nested in a `hidden` one stays hidden. The resolved mode flows down to
+  // descendants (regions, lists, deeper groups).
+  const ownMode = visible === false ? "hidden" : editable === false ? "readonly" : null;
+  const visibility = strongerVisibility(parentVisibility, ownMode);
+
   if (!isAdmin) {
     return (
       <CmsGroupContext.Provider value={prefix}>
-        {children}
+        <CmsGroupVisibilityContext.Provider value={visibility}>
+          {children}
+        </CmsGroupVisibilityContext.Provider>
       </CmsGroupContext.Provider>
     );
   }
 
+  // Surface the section's mode in the hover label so an admin understands
+  // why its fields are locked/absent (e.g. "hero · readonly").
+  const label = visibility ? `${prefix} · ${visibility}` : prefix;
+
   return (
     <CmsGroupContext.Provider value={prefix}>
-      <div
-        data-cms-group={prefix}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          position: "relative",
-          outline: `1.5px dashed ${hovered ? RING_COLOR_HOVER : RING_COLOR_OFF}`,
-          outlineOffset: 6,
-          borderRadius: 4,
-          transition: "outline-color 0.18s ease",
-          ...style,
-        }}
-      >
-        {children}
-        {hovered ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              transform: "translate(-6px, -100%)",
-              background: LABEL_BG,
-              border: LABEL_BORDER,
-              borderBottom: "none",
-              borderRadius: "4px 4px 0 0",
-              padding: "1px 6px",
-              fontSize: 9,
-              fontWeight: 500,
-              color: LABEL_COLOR,
-              letterSpacing: "0.05em",
-              lineHeight: "16px",
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-              fontFamily: "ui-monospace, 'SF Mono', monospace",
-              zIndex: 9999,
-            }}
-          >
-            {prefix}
-          </span>
-        ) : null}
-      </div>
+      <CmsGroupVisibilityContext.Provider value={visibility}>
+        <div
+          data-cms-group={prefix}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            position: "relative",
+            outline: `1.5px dashed ${hovered ? RING_COLOR_HOVER : RING_COLOR_OFF}`,
+            outlineOffset: 6,
+            borderRadius: 4,
+            transition: "outline-color 0.18s ease",
+            ...style,
+          }}
+        >
+          {children}
+          {hovered ? (
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                transform: "translate(-6px, -100%)",
+                background: LABEL_BG,
+                border: LABEL_BORDER,
+                borderBottom: "none",
+                borderRadius: "4px 4px 0 0",
+                padding: "1px 6px",
+                fontSize: 9,
+                fontWeight: 500,
+                color: LABEL_COLOR,
+                letterSpacing: "0.05em",
+                lineHeight: "16px",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                fontFamily: "ui-monospace, 'SF Mono', monospace",
+                zIndex: 9999,
+              }}
+            >
+              {label}
+            </span>
+          ) : null}
+        </div>
+      </CmsGroupVisibilityContext.Provider>
     </CmsGroupContext.Provider>
   );
 }

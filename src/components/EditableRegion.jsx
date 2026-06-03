@@ -29,7 +29,7 @@ import DOMPurify from "isomorphic-dompurify";
 
 import { useCmsContext } from "../lib/context.js";
 import { useStoreSelector } from "../lib/store.js";
-import { CmsGroupContext } from "../lib/group-context.js";
+import { CmsGroupContext, CmsGroupVisibilityContext, strongerVisibility } from "../lib/group-context.js";
 
 /**
  * @import { BlockType } from "../lib/schemas.js"
@@ -101,6 +101,7 @@ export function EditableRegion({ blockPath, as, editable, visible, blockType: _b
     registerEditorVisibility, unregisterEditorVisibility,
   } = useCmsContext();
   const groupPrefix = useContext(CmsGroupContext);
+  const groupVisibility = useContext(CmsGroupVisibilityContext);
   const [isHovered, setIsHovered] = useState(false);
 
   // Auto-prefix the blockPath when wrapped in a `<CmsGroup>`. Discovery
@@ -111,10 +112,13 @@ export function EditableRegion({ blockPath, as, editable, visible, blockType: _b
 
   // Surface the `visible` / `editable` overrides to the drawer's registry.
   // `visible={false}` wins (drops the card entirely); `editable={false}`
-  // locks it. Only admins mount the drawer, so public visitors skip the
-  // registration churn. Re-runs (and cleans up) whenever the mode or path
-  // changes, and unregisters on unmount.
-  const visibilityMode = visible === false ? "hidden" : editable === false ? "readonly" : null;
+  // locks it. An enclosing `<CmsGroup visible/editable>` folds in here too —
+  // most restrictive wins, so a region can tighten the section's mode but
+  // not loosen it. Only admins mount the drawer, so public visitors skip
+  // the registration churn. Re-runs (and cleans up) whenever the mode or
+  // path changes, and unregisters on unmount.
+  const ownMode = visible === false ? "hidden" : editable === false ? "readonly" : null;
+  const visibilityMode = strongerVisibility(groupVisibility, ownMode);
   useEffect(() => {
     if (!isAdmin || !visibilityMode) return undefined;
     registerEditorVisibility(fullPath, visibilityMode);
@@ -145,7 +149,9 @@ export function EditableRegion({ blockPath, as, editable, visible, blockType: _b
     ? renderPlaceholder(as, rest)
     : renderBlock(blockType, value, { as, ...rest });
 
-  if (!isAdmin || editable === false || visible === false) return rendered;
+  // Read-only on the page for any resolved mode (own prop or inherited
+  // from a `<CmsGroup>`): no click target, hover ring, or chip.
+  if (!isAdmin || visibilityMode) return rendered;
 
   const isActive = activeBlock === fullPath;
   /** @param {React.MouseEvent} e */
