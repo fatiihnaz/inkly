@@ -37,3 +37,14 @@ export { useCollection, useCollectionItem } from "./hooks/use-collection.js";
 export { createCmsConfig } from "./lib/config.js";
 export { CmsApiError } from "./lib/errors.js";
 export { getBlock, getBlockValue, groupBlocksByPrefix, indexBlocksByPath } from "./lib/blocks.js";
+
+/**
+ * Public type re-exports. These shapes already surface through the public API
+ * (e.g. `CmsProvider`'s `config` / `initialBlocks` props), so they are part of
+ * the type contract - export them by name so consumers and plugins can
+ * reference them (`@import { CmsConfig } from "inscribed"`) instead of reaching
+ * into internal paths. Changing their shape is a breaking change.
+ *
+ * @typedef {import("./lib/config.js").CmsConfig} CmsConfig
+ * @typedef {import("./lib/schemas.js").BlockResponse} BlockResponse
+ */
