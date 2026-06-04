@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronDown, Undo2 } from "lucide-react";
+import { ChevronDown, Undo2 } from "./icons.jsx";
 
 import { useCmsContext } from "../lib/context.js";
 import { useCollection } from "../hooks/use-collection.js";

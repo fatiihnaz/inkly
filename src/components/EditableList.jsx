@@ -39,7 +39,7 @@
  */
 
 import { Fragment, useContext, useEffect, useState } from "react";
-import { Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Trash2, ChevronUp, ChevronDown } from "./icons.jsx";
 
 import { useCmsContext } from "../lib/context.js";
 import { useStoreSelector } from "../lib/store.js";

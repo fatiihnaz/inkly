@@ -37,7 +37,7 @@ import { usePathname } from "next/navigation";
 import {
   ChevronsLeft, ChevronDown, ChevronLeft, ChevronRight,
   Check, Undo2, LogOut, Search, Eye, Pencil,
-} from "lucide-react";
+} from "./icons.jsx";
 
 import { useCmsContext } from "../lib/context.js";
 import { useStoreSelector } from "../lib/store.js";

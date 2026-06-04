@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Undo2, Lock } from "lucide-react";
+import { ChevronDown, Undo2, Lock } from "./icons.jsx";
 
 import { stableStringify } from "../lib/stable-stringify.js";
 

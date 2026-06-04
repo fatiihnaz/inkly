@@ -20,7 +20,7 @@
  */
 
 import { useMemo } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil } from "./icons.jsx";
 
 import { stableStringify } from "../lib/stable-stringify.js";
 import { diffWords, diffLines, stripHtml } from "../lib/word-diff.js";

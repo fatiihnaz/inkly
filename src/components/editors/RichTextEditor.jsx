@@ -32,7 +32,7 @@ import {
   Bold, Italic, Strikethrough, Heading2, Heading3,
   List as ListIcon, ListOrdered, Quote, Code, Link as LinkIcon,
   Undo2, Redo2,
-} from "lucide-react";
+} from "../icons.jsx";
 
 import { labelStyle, labelTextStyle } from "./styles.js";
 

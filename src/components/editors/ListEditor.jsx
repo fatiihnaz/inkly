@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Trash2, ChevronUp, ChevronDown } from "../icons.jsx";
 
 import { addItem, moveItem, removeItem } from "../../lib/list-ops.js";
 import { ACCENT, TEXT_MUTED, emptyStateStyle } from "../admin-drawer-styles.js";
