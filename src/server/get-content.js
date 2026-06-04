@@ -15,8 +15,6 @@
 import { createRestTransport } from "../defaults/transport.js";
 import { noServiceToken } from "../defaults/service-token.js";
 
-export { discoverManifests } from "./discover.js";
-
 /**
  * @import { CmsConfig } from "../lib/config.js"
  * @import { ServiceTokenProvider } from "../lib/service-token.js"

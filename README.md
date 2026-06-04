@@ -501,7 +501,7 @@ bundle:
 | Import | Side | Highlights |
 | ------ | ---- | ---------- |
 | `inscribed` | client | `CmsProvider`, `EditableRegion`, `EditableList`, `CmsGroup`, `CollectionRegion`, `CollectionItem`, `useCmsContent`, `useCmsBlock`, `useCmsAdmin`, `useCollection`, `useCollectionItem`, `useCountdown`, `createCmsConfig`, `CmsApiError`, block helpers (`getBlock`, `getBlockValue`, `groupBlocksByPrefix`, `indexBlocksByPath`) |
-| `inscribed/server` | server only | `getCmsContent`, `getCmsPageBlocks`, `syncCmsManifest`, `syncAll`, `discoverManifests`, `cmsCacheTag` |
+| `inscribed/server` | server only | `getCmsContent`, `getCmsPageBlocks`, `syncCmsManifest`, `syncAll`, `cmsCacheTag` |
 | `inscribed/page` | server only | `createCmsPage` |
 | `inscribed/actions` | Server Action | `revalidateCmsSlug` |
 
