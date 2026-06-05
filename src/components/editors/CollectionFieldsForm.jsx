@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * @file `CollectionFieldsForm` - schema-driven form renderer for
  * collection items.
@@ -165,27 +167,12 @@ function FieldInput({ field, value, onChange, disabled }) {
 
       case "StringArray":
         return (
-          <label style={labelStyle}>
+          <div style={labelStyle}>
             {labelNode}
-          <textarea
-            value={(Array.isArray(value) ? value : []).join("\n")}
-            onChange={(e) =>
-              onChange(
-                e.target.value
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              )
-            }
-            disabled={disabled}
-            rows={3}
-            placeholder="Her satır bir öğe"
-            className="inscribed-field"
-            style={textareaStyle}
-          />
-          {field.help ? <span style={helpStyle}>{field.help}</span> : null}
-        </label>
-      );
+            <StringArrayEditor value={value} onChange={onChange} disabled={disabled} />
+            {field.help ? <span style={helpStyle}>{field.help}</span> : null}
+          </div>
+        );
 
       case "RichText":
         return (
@@ -220,6 +207,74 @@ function FieldInput({ field, value, onChange, disabled }) {
         </label>
       );
   }
+}
+
+// ---- StringArrayEditor -----------------------------------------------------
+
+/**
+ * @param {{
+ *   value: string[] | undefined,
+ *   onChange: (next: string[]) => void,
+ *   disabled: boolean,
+ * }} props
+ */
+function StringArrayEditor({ value, onChange, disabled }) {
+  const [draft, setDraft] = useState("");
+  const items = Array.isArray(value) ? value : [];
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    onChange([...items, trimmed]);
+    setDraft("");
+  };
+
+  return (
+    <div style={stringArrayShellStyle}>
+      {items.length === 0 ? (
+        <span style={stringArrayEmptyStyle}>—</span>
+      ) : (
+        <div style={stringArrayListStyle}>
+          {items.map((item, i) => (
+            <span key={i} style={stringArrayChipStyle}>
+              {item}
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onChange(items.filter((_, j) => j !== i))}
+                  style={stringArrayRemoveStyle}
+                  aria-label={`"${item}" öğesini kaldır`}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {!disabled && (
+        <div style={stringArrayAddRowStyle}>
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+            placeholder="Yeni öğe ekle…"
+            className="inscribed-field"
+            style={stringArrayInputStyle}
+          />
+          <button
+            type="button"
+            onClick={commit}
+            disabled={!draft.trim()}
+            style={stringArrayAddBtnStyle}
+          >
+            Ekle
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -383,3 +438,42 @@ const checkboxStyle = {
   cursor: "pointer",
 };
 const emptyHintStyle = { color: "currentColor", opacity: 0.6, fontSize: 13 };
+
+const stringArrayShellStyle = { display: "flex", flexDirection: "column", gap: 8 };
+const stringArrayListStyle = { display: "flex", flexWrap: "wrap", gap: 6 };
+const stringArrayChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "3px 10px",
+  borderRadius: 99,
+  border: "1px solid rgba(127,127,127,0.25)",
+  background: "rgba(127,127,127,0.08)",
+  fontSize: 12,
+  lineHeight: 1.4,
+};
+const stringArrayRemoveStyle = {
+  background: "none",
+  border: "none",
+  padding: "0 1px",
+  cursor: "pointer",
+  fontSize: 14,
+  lineHeight: 1,
+  color: "inherit",
+  opacity: 0.5,
+  fontFamily: "inherit",
+};
+const stringArrayEmptyStyle = { fontSize: 12, opacity: 0.4 };
+const stringArrayAddRowStyle = { display: "flex", gap: 6 };
+const stringArrayInputStyle = { ...inputStyle, flex: 1, fontSize: 12 };
+const stringArrayAddBtnStyle = {
+  padding: "6px 12px",
+  border: "1px solid rgba(127,127,127,0.25)",
+  borderRadius: 6,
+  background: "rgba(127,127,127,0.08)",
+  color: "inherit",
+  fontSize: 12,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
+};

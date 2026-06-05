@@ -339,7 +339,9 @@ export function AdminDrawer() {
   const allTabs = useMemo(
     () => [
       { id: "page", label: "Sayfa", count: pageBlockList.length, dirty: pageDirty },
-      { id: "global", label: "Genel", count: globalBlockList.length, dirty: globalDirty },
+      ...(globalBlockList.length > 0
+        ? [{ id: "global", label: "Genel", count: globalBlockList.length, dirty: globalDirty }]
+        : []),
       ...regionTabs.map((t) => ({
         ...t,
         dirty: collectionDirtyByKey.has(t.key),

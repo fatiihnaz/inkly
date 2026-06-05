@@ -24,7 +24,7 @@
  * only XSS themselves - public visitors see scrubbed output.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -58,6 +58,8 @@ const EMPTY_DOC_HTML = "<p></p>";
  * @param {boolean} [props.disabled]
  */
 export function RichTextEditor({ value, onChange, disabled }) {
+  const suppressUpdateRef = useRef(true);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -78,10 +80,19 @@ export function RichTextEditor({ value, onChange, disabled }) {
       },
     },
     onUpdate: ({ editor }) => {
+      if (suppressUpdateRef.current) return;
       const html = editor.getHTML();
       onChange(html === EMPTY_DOC_HTML ? "" : html);
     },
   });
+
+  // Release the suppression once the editor instance is ready so that real
+  // user edits are forwarded normally.
+  useEffect(() => {
+    if (!editor) return;
+    suppressUpdateRef.current = false;
+    return () => { suppressUpdateRef.current = true; };
+  }, [editor]);
 
   // External value replacements (reset, refetch, discard) need to mirror
   // onto the editor. Skipping when the values match avoids the per-keystroke
@@ -92,7 +103,9 @@ export function RichTextEditor({ value, onChange, disabled }) {
     const incoming = value || "";
     if (incoming === current) return;
     if (incoming === "" && current === EMPTY_DOC_HTML) return;
+    suppressUpdateRef.current = true;
     editor.commands.setContent(incoming || "", false);
+    suppressUpdateRef.current = false;
   }, [editor, value]);
 
   // `editable` is only read at init, so toggle it imperatively when the
