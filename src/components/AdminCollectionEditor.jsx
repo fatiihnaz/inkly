@@ -37,6 +37,7 @@ import {
   seedValues,
   buildPayload,
   requiredMissing,
+  humanizeCollectionError,
 } from "./editors/CollectionFieldsForm.jsx";
 import {
   TEXT_MUTED,
@@ -303,7 +304,9 @@ export function useCollectionEditor(collection, slug) {
         } else if (err instanceof CmsApiError && err.isForbidden) {
           setError("Bu kaydı düzenleme yetkin yok.");
         } else if (err instanceof CmsApiError && err.status === 400) {
-          setError(`Geçersiz veri: ${err.detail || err.message}`);
+          // Map the backend's `works[0].title` path notation onto schema
+          // labels so the banner reads "Çalışmalar #1 → Başlık".
+          setError(humanizeCollectionError(err.detail, schema.fields) ?? `Geçersiz veri: ${err.message}`);
         } else {
           setError(/** @type {Error} */ (err).message);
         }

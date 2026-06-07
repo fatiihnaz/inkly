@@ -26,6 +26,7 @@ export {
   seedValues,
   buildPayload,
   requiredMissing,
+  humanizeCollectionError,
 } from "./components/editors/CollectionFieldsForm.jsx";
 
 export { useCmsContent } from "./hooks/use-cms-content.js";

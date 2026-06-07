@@ -88,7 +88,11 @@
  * and by the `/cms/collections/me` envelope. Drives the schema-driven form
  * rendered in the drawer and in admin examples.
  *
- * @typedef {"Text" | "RichText" | "Bool" | "Url" | "StringArray" | "Date" | "Number"} CollectionFieldType
+ * `ObjectArray` is the only non-scalar: its value is an array of plain
+ * objects, each shaped by the descriptor's `itemFields`. The form
+ * renders it as a repeatable sub-form (add/remove/reorder).
+ *
+ * @typedef {"Text" | "RichText" | "Bool" | "Url" | "StringArray" | "Date" | "Number" | "ObjectArray"} CollectionFieldType
  *
  * @typedef {Object} CollectionFieldDescriptor
  * @property {string} name
@@ -102,6 +106,12 @@
  *   filtering on non-filterable fields with 400. UI uses this to gate
  *   which fields surface in filter pickers.
  * @property {string[] | null} options   When non-empty, render as a select regardless of `type`.
+ * @property {CollectionFieldDescriptor[] | null} itemFields
+ *   Non-null only for `ObjectArray` fields: the schema for one element of
+ *   the repeatable sub-form. Each entry is itself a descriptor (Text, Url,
+ *   StringArray, …) so rendering / seeding / payload shaping / validation
+ *   recurse through the same machinery — nesting another `ObjectArray`
+ *   works for free. `null` on every scalar field, exactly like `options`.
  * @property {string | null} help
  *
  * @typedef {Object} CollectionSchema

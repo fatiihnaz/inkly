@@ -36,6 +36,7 @@ import {
   seedValues,
   buildPayload,
   requiredMissing,
+  humanizeCollectionError,
 } from "./editors/CollectionFieldsForm.jsx";
 import {
   TEXT_MUTED,
@@ -492,7 +493,9 @@ function CreateForm({ collectionKey, schema }) {
         if (err instanceof CmsApiError && err.isForbidden) {
           setError("Bu collection'da kayıt oluşturma yetkin yok.");
         } else if (err instanceof CmsApiError && err.status === 400) {
-          setError(`Geçersiz veri: ${err.detail || err.message}`);
+          // Backend reports inner failures as `works[0].title`; resolve
+          // onto schema labels for a readable banner.
+          setError(humanizeCollectionError(err.detail, schema.fields) ?? `Geçersiz veri: ${err.message}`);
         } else {
           setError(/** @type {Error} */ (err).message);
         }
