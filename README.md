@@ -54,8 +54,8 @@ implementing that interface. See [Bring your own backend](#bring-your-own-backen
 - **Static discovery.** A CLI (`cms-sync`) AST-scans your `app/` directory and
   registers a manifest of every region with your backend. It is idempotent, fits in a
   `predev` / `prebuild` hook.
-- **Rich content types.** Text, RichText (Tiptap), Image, Link, Date, repeatable
-  Lists, and read-only Collection bindings.
+- **Rich content types.** Short/long plain text, RichText (Tiptap), Image, Link,
+  Date, repeatable Lists, and read-only Collection bindings.
 - **App Router native.** Server Components fetch content (ISR-cacheable),
   Client Components edit it, Server Actions revalidate it. SSR-seeded, no
   layout-shift flicker.
@@ -159,7 +159,7 @@ export default function Home() {
         <EditableRegion
           blockPath="hero.title"
           as="h1"
-          blockType="Text"
+          blockType="ShortText"
           defaultValue="Welcome"
         />
         <EditableRegion
@@ -225,15 +225,19 @@ page by passing discovery metadata to `useCmsBlock(path, { blockType, defaultVal
 A **block** is a single editable value addressed by a dot-notation `blockPath`
 (e.g. `hero.title`). The value shape depends on its `blockType`:
 
-| `blockType` | Value shape | Editor |
-| ----------- | ----------- | ------ |
-| `Text`      | `string` | plain text |
-| `RichText`  | HTML `string` (sanitised) | Tiptap |
-| `Image`     | `{ src, alt }` | upload + alt |
-| `Link`      | `{ href, label }` | URL + label |
-| `Date`      | ISO 8601 `string` | date picker / countdown |
-| `List`      | array of objects shaped by `itemSchema` | repeatable items |
-| `Collection`| `{ collection, slug? }` binding (read-only) | n/a (see [Collections](#collections)) |
+| `blockType`  | Value shape | Editor |
+| ------------ | ----------- | ------ |
+| `ShortText`  | `string` | single-line input |
+| `LongText`   | `string` | multi-line textarea |
+| `RichText`   | HTML `string` (sanitised) | Tiptap |
+| `Image`      | `{ src, alt }` | upload + alt |
+| `Link`       | `{ href, label }` | URL + label |
+| `Date`       | ISO 8601 `string` | date picker / countdown |
+| `List`       | array of objects shaped by `itemSchema` | repeatable items |
+| `Collection` | `{ collection, slug? }` binding (read-only) | n/a (see [Collections](#collections)) |
+
+> `Text` is a legacy alias of `LongText` (multi-line) it predates the
+> short/long split. Prefer `ShortText` / `LongText` in new code.
 
 For full control over rendering, read a block directly from a Client Component
 with `useCmsBlock(blockPath)`, it returns the raw `value`, `version`, and an
@@ -254,9 +258,10 @@ in one place; the mode cascades to every descendant. See
 ### Lists
 
 `<EditableList>` renders a `List`-typed block as repeatable items via a
-render-prop. You provide an `itemSchema` describing each item's fields; admins
-get add / remove / reorder controls and the whole list saves atomically as one
-version. It accepts the same `visible` / `editable` gates as `<EditableRegion>`
+render-prop. You provide an `itemSchema` describing each item's fields each
+field's `blockType` is one of the leaf types above (`ShortText`, `LongText`,
+`RichText`, `Image`, `Link`, `Date`). Admins get add / remove / reorder controls
+and the whole list saves atomically as one version. It accepts the same `visible` / `editable` gates as `<EditableRegion>`
 (see [Access control](#access-control)) read-only drops the add/move/delete
 affordances and locks the drawer card.
 
@@ -269,8 +274,8 @@ export function Team() {
     <EditableList
       blockPath="team.members"
       itemSchema={{
-        name:  { blockType: "Text",  defaultValue: "" },
-        photo: { blockType: "Image", defaultValue: { src: "", alt: "" } },
+        name:  { blockType: "ShortText", defaultValue: "" },
+        photo: { blockType: "Image",     defaultValue: { src: "", alt: "" } },
       }}
     >
       {(item, i) => (
@@ -302,6 +307,12 @@ Both take a render-prop receiving the resolved items plus `{ isLoading, error,
 refetch, ... }`. Items are fetched at render time and cached under
 `cms-collection-{key}`, independent of the page slug. The hooks `useCollection`
 and `useCollectionItem` expose the same data directly.
+
+Editing a collection item is schema-driven: the backend's `/schema` describes each
+field's `type`, and the exported `<CollectionFieldsForm>` renders one input per
+type scalars (`ShortText` / `LongText` / `RichText` / `Number` / `Bool` / `Url`
+/ `Date`), `StringArray`, and nested repeatable `ObjectArray` cards. The same
+`Text` → `LongText` legacy alias applies on this side too.
 
 ### Editing & drafts
 
@@ -369,7 +380,7 @@ const canEdit = userRoles.includes("CONTENT_EDITOR");
 
 <EditableRegion
   blockPath="hero.title"
-  blockType="Text"
+  blockType="ShortText"
   defaultValue="Welcome"
   as="h1"
   editable={canEdit}
@@ -384,9 +395,9 @@ normal), so a child can *tighten* the section's mode but not loosen it:
 ```jsx
 <CmsGroup name="hero" editable={false}>
   {/* whole section read-only in the drawer */}
-  <EditableRegion blockPath="title" blockType="Text" defaultValue="Welcome" as="h1" />
+  <EditableRegion blockPath="title" blockType="ShortText" defaultValue="Welcome" as="h1" />
   {/* a child can go further and hide itself, but can't re-enable editing */}
-  <EditableRegion blockPath="badge" blockType="Text" defaultValue="New" visible={false} />
+  <EditableRegion blockPath="badge" blockType="ShortText" defaultValue="New" visible={false} />
 </CmsGroup>
 ```
 

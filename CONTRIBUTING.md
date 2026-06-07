@@ -216,6 +216,17 @@ Keep the method's options shape consistent: `(…, opts?)` where `opts` is
    `<EditableList>`, consumed by the drawer) is what drives this it follows the
    same register/unregister pattern as `itemSchemas` and `collectionBindings`.
 
+Two conventions worth knowing before you add one:
+
+- **Plain text is type-driven.** `ShortText` and `LongText`
+  share one `TextEditor` via `FieldEditor`, and `Text` is a legacy
+  alias of `LongText`. Collection field types mirror the same names in
+  `CollectionFieldType`.
+- **Lazy-load heavy editors.** If an editor pulls a large dependency (e.g.
+  Tiptap), import it lazily at the point of use so it stays out of the package's
+  main-entry bundle a static import leaks the chunk into `index.js` since the
+  package sets no `sideEffects`. See `CollectionFieldsForm`'s RichText case.
+
 ## Commit conventions
 
 We use **[Conventional Commits](https://www.conventionalcommits.org/)** with small,
